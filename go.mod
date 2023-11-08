@@ -1,4 +1,4 @@
-module github.com/ohler55/slip-msg
+module github.com/ohler55/slip-message
 
 go 1.21
 
