@@ -1,4 +1,4 @@
-# slip-msg
+# slip-message
 
 A message package for [SLIP](https://github.com/ohler55/slip).
 
