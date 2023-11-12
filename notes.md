@@ -1,11 +1,21 @@
 # SLIP-Message Notes
 
-- message-subscriber-flavor
- - subscribe or make-instance 'message-subscriber-flavor :hub hub :subject subject ...)
+- todo
+ - local-hub
+  - :subscribe
+  - :unsubscribe
+  - :publish
+  - :close
+  - :configure-subject
+  - :request
+  - make-local-hub
+
+- subscriber-flavor
+ - subscribe or make-instance subscriber-flavor :hub hub :subject subject ...)
   - two ways to make (or 3?)
    (send hub :subscribe ...)
    (message-subscribe hub subject ...)
-   (make-instance 'message-subscriber-flavor :hub hub :subject subject ...)
+   (make-instance subscriber-flavor :hub hub :subject subject ...)
 
 - hub flavor
  - :configure-subject - with parameters, use jetstream model
@@ -14,7 +24,7 @@
   - content can be bag [json or sen], lisp [sexp], string [raw bytes]
   - content-type :json, :sen, :lisp, :raw, nil
    - nil uses :json for bag, :lisp for lisp, and raw for string, others print/append
- - :subscribe (subject callback &optional content-type) => msg-subscriber-flavor instance
+ - :subscribe (subject callback &optional content-type) => subscriber-flavor instance
   - callback of nil waits for (send subscriber :next timeout)
    - callback (subscriber msg-id msg error)
     - should msg-id be context instead then (send subscriber :ack context)
