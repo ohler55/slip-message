@@ -11,6 +11,7 @@
   - make-local-hub
 
 - subscriber-flavor
+ - don't allow make-instance
  - subscribe or make-instance subscriber-flavor :hub hub :subject subject ...)
   - two ways to make (or 3?)
    (send hub :subscribe ...)

@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/ohler55/slip"
 	"github.com/ohler55/slip/pkg/cl"
@@ -15,32 +14,27 @@ var (
 	subscriberFlavor *flavors.Flavor
 )
 
-type subscription struct {
-	hub         *flavors.Instance
-	subject     string
-	filter      []string
-	contentType slip.Object
-	callback    slip.Caller
-}
-
 func init() {
-	subscriberFlavor = flavors.DefFlavor("parquet-subscriber-flavor",
-		map[string]slip.Object{"filepath": nil},
+	subscriberFlavor = flavors.DefFlavor("subscriber-flavor",
+		map[string]slip.Object{},
 		nil,
 		slip.List{
 			slip.List{
 				slip.Symbol(":init-keywords"),
-				slip.Symbol(":file"),
+				slip.Symbol(":hub"),
+				slip.Symbol(":subject"),
+				slip.Symbol(":callback"),
+				slip.Symbol(":content-type"),
 			},
-			slip.Symbol(":gettable-instance-variables"),
 			slip.List{
 				slip.Symbol(":documentation"),
-				slip.String(`A parquet subscriber opens a parquet file and can be used to
-access the content of that file.`),
+				slip.String(`A message subscriber is an object that facilitates listening
+for message distributed by a message hub.`),
 			},
 		},
 	)
-	subscriberFlavor.DefMethod(":init", "", subscriberInitCaller{})
+	subscriberFlavor.Final = true
+	subscriberFlavor.GoMakeOnly = true
 	subscriberFlavor.DefMethod(":hub", "", subscriberHubCaller{})
 	subscriberFlavor.DefMethod(":subject", "", subscriberSubjectCaller{})
 	subscriberFlavor.DefMethod(":callback", "", subscriberCallbackCaller{})
@@ -50,60 +44,11 @@ access the content of that file.`),
 	subscriberFlavor.DefMethod(":close", "", subscriberCloseCaller{})
 }
 
-type subscriberInitCaller struct{}
-
-func (caller subscriberInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self := s.Get("self").(*flavors.Instance)
-	if 0 < len(args) {
-		args = args[0].(slip.List)
-	}
-	var (
-		hub     slip.Object
-		subject slip.Object
-		cb      slip.Object
-		ct      slip.Object
-	)
-	for i := 0; i < len(args); i += 2 {
-		key, _ := args[i].(slip.Symbol)
-		switch string(key) {
-		case ":hub":
-			hub = args[i+1]
-		case ":subject":
-			subject = args[i+1]
-		case ":callback":
-			cb = args[i+1]
-		case ":content-type":
-			ct = args[i+1]
-		default:
-			slip.NewPanic("%s is not a valid keyword to subscriber-flavor :init", args[i])
-		}
-	}
-	initSubscriber(self, hub, subject, cb, ct)
-
-	return nil
-}
-
-func (caller subscriberInitCaller) Docs() string {
-	return `__:init__ &key _hub_ _subject_ _callback_ _content-type_
-   _:hub_ the message hub instance to handle the subscription.
-   _:subject_ to listen on.
-   _:callback_ can be either _nil_ when the _:next_ method will be called on a queue or
-a function to call when a message is received.
-   _:content-type_is an optional argument of the expected content type which can be one of
-_nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.
-
-Sets the initial values when _make-instance_ is called.
-`
-}
-
 type subscriberHubCaller struct{}
 
-func (caller subscriberHubCaller) Call(s *slip.Scope, args slip.List, _ int) (result slip.Object) {
+func (caller subscriberHubCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	if sub, ok := self.Any.(*subscription); ok {
-		result = sub.hub
-	}
-	return
+	return self.Any.(*subscription).hub
 }
 
 func (caller subscriberHubCaller) Docs() string {
@@ -115,12 +60,9 @@ Returns the hub instance this subscriber is subscribed through.
 
 type subscriberSubjectCaller struct{}
 
-func (caller subscriberSubjectCaller) Call(s *slip.Scope, args slip.List, _ int) (result slip.Object) {
+func (caller subscriberSubjectCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	if sub, ok := self.Any.(*subscription); ok {
-		result = slip.String(sub.subject)
-	}
-	return
+	return slip.String(self.Any.(*subscription).subject)
 }
 
 func (caller subscriberSubjectCaller) Docs() string {
@@ -132,12 +74,9 @@ Returns the subject this subscriber is subscribed to.
 
 type subscriberCallbackCaller struct{}
 
-func (caller subscriberCallbackCaller) Call(s *slip.Scope, args slip.List, _ int) (result slip.Object) {
+func (caller subscriberCallbackCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	if sub, ok := self.Any.(*subscription); ok {
-		result, _ = sub.callback.(slip.Object)
-	}
-	return
+	return self.Any.(*subscription).callback.(slip.Object)
 }
 
 func (caller subscriberCallbackCaller) Docs() string {
@@ -149,12 +88,9 @@ Returns the callback this subscriber invokes on receiving a message or nil if po
 
 type subscriberContentTypeCaller struct{}
 
-func (caller subscriberContentTypeCaller) Call(s *slip.Scope, args slip.List, _ int) (result slip.Object) {
+func (caller subscriberContentTypeCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	if sub, ok := self.Any.(*subscription); ok {
-		result = sub.contentType
-	}
-	return
+	return self.Any.(*subscription).contentType
 }
 
 func (caller subscriberContentTypeCaller) Docs() string {
@@ -168,9 +104,7 @@ type subscriberSetCallbackCaller struct{}
 
 func (caller subscriberSetCallbackCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	if sub, ok := self.Any.(*subscription); ok {
-		sub.callback = cl.ResolveToCaller(&self.Scope, args[0], 0)
-	}
+	self.Any.(*subscription).callback = cl.ResolveToCaller(&self.Scope, args[0], 0)
 	return nil
 }
 
@@ -185,9 +119,7 @@ type subscriberSetContentTypeCaller struct{}
 
 func (caller subscriberSetContentTypeCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	if sub, ok := self.Any.(*subscription); ok {
-		sub.setContentType(args[0])
-	}
+	self.Any.(*subscription).setContentType(args[0])
 	return nil
 }
 
@@ -202,13 +134,12 @@ type subscriberCloseCaller struct{}
 
 func (caller subscriberCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	if sub, ok := self.Any.(*subscription); ok {
+	sub := self.Any.(*subscription)
 
-		fmt.Printf("*** sub: %v\n", sub)
+	fmt.Printf("*** sub: %v\n", sub)
 
-		// TBD remove from hub, set hub to nil and zero string and filter
+	// TBD remove from hub, set hub to nil
 
-	}
 	return nil
 }
 
@@ -219,8 +150,9 @@ Closes the subscriber which stops the subscriber from listening on it's subject.
 `
 }
 
-func initSubscriber(self *flavors.Instance, hub, subject, cb, ct slip.Object) {
-	sub := subscription{}
+func makeSubscriber(hub, subject, cb, ct slip.Object) (self *flavors.Instance, sub *subscription) {
+	self = subscriberFlavor.MakeInstance().(*flavors.Instance)
+	sub = &subscription{self: self}
 	sub.setContentType(ct)
 	if cb != nil {
 		sub.callback = cl.ResolveToCaller(&self.Scope, cb, 0)
@@ -232,21 +164,10 @@ func initSubscriber(self *flavors.Instance, hub, subject, cb, ct slip.Object) {
 	}
 	if ss, ok := subject.(slip.String); ok {
 		sub.subject = string(ss)
-		sub.filter = strings.Split(sub.subject, ".")
 	} else {
 		slip.PanicType(":subject", subject, "string")
 	}
-	self.Any = &sub
+	self.Any = sub
 
-	// TBD add self to hub subscribers
-	//  should be allowed but check that hubs match
-}
-
-func (sub *subscription) setContentType(ct slip.Object) {
-	switch ct {
-	case nil, slip.Symbol(":json"), slip.Symbol(":lisp"), slip.Symbol(":auto"), slip.Symbol(":raw"):
-		sub.contentType = ct
-	default:
-		slip.PanicType(":content-type", ct, "nil", ":json", ":lisp", ":auto", ":raw")
-	}
+	return
 }
