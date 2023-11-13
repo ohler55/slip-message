@@ -54,6 +54,7 @@ func (caller subscriberHubCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 func (caller subscriberHubCaller) Docs() string {
 	return `__:hub__ => _instance_
 
+
 Returns the hub instance this subscriber is subscribed through.
 `
 }
@@ -67,6 +68,7 @@ func (caller subscriberSubjectCaller) Call(s *slip.Scope, args slip.List, _ int)
 
 func (caller subscriberSubjectCaller) Docs() string {
 	return `__:subject__ => _string_
+
 
 Returns the subject this subscriber is subscribed to.
 `
@@ -82,6 +84,7 @@ func (caller subscriberCallbackCaller) Call(s *slip.Scope, args slip.List, _ int
 func (caller subscriberCallbackCaller) Docs() string {
 	return `__:callback__ => _function_
 
+
 Returns the callback this subscriber invokes on receiving a message or nil if polling is expected with _:next_.
 `
 }
@@ -95,6 +98,7 @@ func (caller subscriberContentTypeCaller) Call(s *slip.Scope, args slip.List, _ 
 
 func (caller subscriberContentTypeCaller) Docs() string {
 	return `__:content-type__ => _keyword_|_nil_
+
 
 Returns the content-type this subscriber expects.
 `
@@ -111,6 +115,7 @@ func (caller subscriberSetCallbackCaller) Call(s *slip.Scope, args slip.List, _ 
 func (caller subscriberSetCallbackCaller) Docs() string {
 	return `__:set-callback__ _function_ => _nil_
 
+
 Sets the callback of this subscriber_.
 `
 }
@@ -125,6 +130,7 @@ func (caller subscriberSetContentTypeCaller) Call(s *slip.Scope, args slip.List,
 
 func (caller subscriberSetContentTypeCaller) Docs() string {
 	return `__:set-content-type__ _nil_|_:json_|_:lisp_|_:auto_|_:raw_
+
 
 Sets the content-type of this subscriber.
 `
@@ -145,6 +151,7 @@ func (caller subscriberCloseCaller) Call(s *slip.Scope, args slip.List, _ int) s
 
 func (caller subscriberCloseCaller) Docs() string {
 	return `__:close__ => _nil_
+
 
 Closes the subscriber which stops the subscriber from listening on it's subject.
 `
