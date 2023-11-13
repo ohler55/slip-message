@@ -105,6 +105,7 @@ func (caller localHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, _ in
 	case slip.String:
 		var subs []*localSub
 		subject := strings.Split(string(ts), ".")
+		lh.moo.Lock()
 		for _, ls := range lh.subs {
 			if subjectMatch(ls.filter, subject) {
 				cnt++
@@ -113,6 +114,7 @@ func (caller localHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, _ in
 			subs = append(subs, ls)
 		}
 		lh.subs = subs
+		lh.moo.Unlock()
 	case *flavors.Instance:
 		lh.moo.Lock()
 		for i, ls := range lh.subs {
