@@ -3,7 +3,9 @@
 package main
 
 import (
+	"github.com/ohler55/ojg/sen"
 	"github.com/ohler55/slip"
+	"github.com/ohler55/slip/pkg/bag"
 	"github.com/ohler55/slip/pkg/flavors"
 )
 
@@ -12,6 +14,7 @@ type subscription struct {
 	subject     string
 	contentType slip.Object
 	callback    slip.Caller
+	name        string
 	self        *flavors.Instance
 }
 
@@ -22,4 +25,29 @@ func (sub *subscription) setContentType(ct slip.Object) {
 	default:
 		slip.PanicType(":content-type", ct, "nil", ":json", ":lisp", ":auto", ":raw")
 	}
+}
+
+func (sub *subscription) convertMessage(msg slip.Object) slip.Object {
+	if ss, ok := msg.(slip.String); ok && 0 < len(ss) {
+		switch sub.contentType {
+		case nil, slip.Symbol(":auto"):
+			switch ss[0] {
+			case '{', '[':
+				inst := bag.Flavor().MakeInstance().(*flavors.Instance)
+				inst.Any = sen.MustParse([]byte(ss))
+				msg = inst
+			case '(':
+				// TBD
+			}
+		case slip.Symbol(":json"):
+			inst := bag.Flavor().MakeInstance().(*flavors.Instance)
+			inst.Any = sen.MustParse([]byte(ss))
+			msg = inst
+		case slip.Symbol(":lisp"):
+			// TBD read
+		case slip.Symbol(":raw"):
+			// leave as raw
+		}
+	}
+	return msg
 }

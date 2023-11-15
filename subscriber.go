@@ -3,8 +3,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/ohler55/slip"
 	"github.com/ohler55/slip/pkg/cl"
 	"github.com/ohler55/slip/pkg/flavors"
@@ -20,13 +18,6 @@ func init() {
 		nil,
 		slip.List{
 			slip.List{
-				slip.Symbol(":init-keywords"),
-				slip.Symbol(":hub"),
-				slip.Symbol(":subject"),
-				slip.Symbol(":callback"),
-				slip.Symbol(":content-type"),
-			},
-			slip.List{
 				slip.Symbol(":documentation"),
 				slip.String(`A message subscriber is an object that facilitates listening
 for message distributed by a message hub.`),
@@ -38,6 +29,7 @@ for message distributed by a message hub.`),
 	subscriberFlavor.DefMethod(":hub", "", subscriberHubCaller{})
 	subscriberFlavor.DefMethod(":subject", "", subscriberSubjectCaller{})
 	subscriberFlavor.DefMethod(":callback", "", subscriberCallbackCaller{})
+	subscriberFlavor.DefMethod(":name", "", subscriberNameCaller{})
 	subscriberFlavor.DefMethod(":content-type", "", subscriberContentTypeCaller{})
 	subscriberFlavor.DefMethod(":set-callback", "", subscriberSetCallbackCaller{})
 	subscriberFlavor.DefMethod(":set-content-type", "", subscriberSetContentTypeCaller{})
@@ -76,9 +68,12 @@ Returns the subject this subscriber is subscribed to.
 
 type subscriberCallbackCaller struct{}
 
-func (caller subscriberCallbackCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller subscriberCallbackCaller) Call(s *slip.Scope, args slip.List, _ int) (cb slip.Object) {
 	self := s.Get("self").(*flavors.Instance)
-	return self.Any.(*subscription).callback.(slip.Object)
+	if self.Any.(*subscription).callback != nil {
+		cb = self.Any.(*subscription).callback.(slip.Object)
+	}
+	return
 }
 
 func (caller subscriberCallbackCaller) Docs() string {
@@ -104,11 +99,30 @@ Returns the content-type this subscriber expects.
 `
 }
 
+type subscriberNameCaller struct{}
+
+func (caller subscriberNameCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	self := s.Get("self").(*flavors.Instance)
+	return slip.String(self.Any.(*subscription).name)
+}
+
+func (caller subscriberNameCaller) Docs() string {
+	return `__:name__ => _string_
+
+
+Returns the name this subscriber is subscribed to.
+`
+}
+
 type subscriberSetCallbackCaller struct{}
 
 func (caller subscriberSetCallbackCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	self.Any.(*subscription).callback = cl.ResolveToCaller(&self.Scope, args[0], 0)
+	if args[0] == nil {
+		self.Any.(*subscription).callback = nil
+	} else {
+		self.Any.(*subscription).callback = cl.ResolveToCaller(&self.Scope, args[0], 0)
+	}
 	return nil
 }
 
@@ -138,14 +152,10 @@ Sets the content-type of this subscriber.
 
 type subscriberCloseCaller struct{}
 
-func (caller subscriberCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller subscriberCloseCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	sub := self.Any.(*subscription)
-
-	fmt.Printf("*** sub: %v\n", sub)
-
-	// TBD remove from hub, set hub to nil
-
+	sub.hub.Receive(s, ":unsubscribe", slip.List{sub.self}, depth)
 	return nil
 }
 
@@ -157,22 +167,24 @@ Closes the subscriber which stops the subscriber from listening on it's subject.
 `
 }
 
-func makeSubscriber(hub, subject, cb, ct slip.Object) (self *flavors.Instance, sub *subscription) {
+func makeSubscriber(hub *flavors.Instance, subject, cb, ct, name slip.Object) (self *flavors.Instance, sub *subscription) {
 	self = subscriberFlavor.MakeInstance().(*flavors.Instance)
-	sub = &subscription{self: self}
+	sub = &subscription{self: self, hub: hub}
 	sub.setContentType(ct)
 	if cb != nil {
 		sub.callback = cl.ResolveToCaller(&self.Scope, cb, 0)
-	}
-	if hi, ok := hub.(*flavors.Instance); ok {
-		sub.hub = hi
-	} else {
-		slip.PanicType(":hub", hub, "instance")
 	}
 	if ss, ok := subject.(slip.String); ok {
 		sub.subject = string(ss)
 	} else {
 		slip.PanicType(":subject", subject, "string")
+	}
+	if name != nil {
+		if ss, ok := name.(slip.String); ok {
+			sub.name = string(ss)
+		} else {
+			slip.PanicType(":name", name, "string")
+		}
 	}
 	self.Any = sub
 

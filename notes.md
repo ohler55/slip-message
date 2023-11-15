@@ -7,16 +7,19 @@
   - :publish
   - :close
   - :configure-subject
+   - match up with jetstream
+   - work-queue
+    - allow multiple subscribers, send to one at a time and wait for an ack
+   - persistent with list list of consumers (subscriber name)
+    - keep queue and deliver to each, handled in the subscriber, needs ack
   - :request
   - make-local-hub
-
-- subscriber-flavor
- - don't allow make-instance
- - subscribe or make-instance subscriber-flavor :hub hub :subject subject ...)
-  - two ways to make (or 3?)
-   (send hub :subscribe ...)
-   (message-subscribe hub subject ...)
-   (make-instance subscriber-flavor :hub hub :subject subject ...)
+ - subscriber
+  - if callback return t then that is an ack else not acked
+  - for :next
+   - return id and msg and then subscriber needs an :ack with message id
+   - **or return msg ann an ack callback**
+  - (message-subscribe hub subject ...)
 
 - hub flavor
  - :configure-subject - with parameters, use jetstream model
