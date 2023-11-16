@@ -1,11 +1,11 @@
 # SLIP-Message Notes
 
 - todo
- - local-hub
-  - :subscribe
-  - :unsubscribe
-  - :publish
-  - :close
+ - app-hub
+  + :subscribe
+  + :unsubscribe
+  + :publish
+  + :close
   - :configure-subject
    - match up with jetstream
    - work-queue
@@ -13,12 +13,13 @@
    - persistent with list list of consumers (subscriber name)
     - keep queue and deliver to each, handled in the subscriber, needs ack
   - :request
-  - make-local-hub
+  - make-app-hub
+
  - subscriber
   - if callback return t then that is an ack else not acked
   - for :next
    - return id and msg and then subscriber needs an :ack with message id
-   - **or return msg ann an ack callback**
+   - **or return msg and an ack callback**
   - (message-subscribe hub subject ...)
 
 - hub flavor

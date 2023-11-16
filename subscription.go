@@ -37,14 +37,18 @@ func (sub *subscription) convertMessage(msg slip.Object) slip.Object {
 				inst.Any = sen.MustParse([]byte(ss))
 				msg = inst
 			case '(':
-				// TBD
+				if code, _ := slip.ReadOne([]byte(ss)); 0 < len(code) {
+					msg = code[0]
+				}
 			}
 		case slip.Symbol(":json"):
 			inst := bag.Flavor().MakeInstance().(*flavors.Instance)
 			inst.Any = sen.MustParse([]byte(ss))
 			msg = inst
 		case slip.Symbol(":lisp"):
-			// TBD read
+			if code, _ := slip.ReadOne([]byte(ss)); 0 < len(code) {
+				msg = code[0]
+			}
 		case slip.Symbol(":raw"):
 			// leave as raw
 		}

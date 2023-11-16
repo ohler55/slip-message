@@ -9,6 +9,7 @@ import (
 
 	"github.com/ohler55/ojg/tt"
 	"github.com/ohler55/slip"
+	"github.com/ohler55/slip/pkg/flavors"
 	"github.com/ohler55/slip/pkg/gi"
 	"github.com/ohler55/slip/sliptest"
 )
@@ -17,6 +18,7 @@ func TestAppHubSubscribe(t *testing.T) {
 	scope := slip.NewScope()
 	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
 	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
 	(&sliptest.Function{
 		Scope:  scope,
 		Source: `hub`,
@@ -112,6 +114,8 @@ func TestReaderDocs(t *testing.T) {
 		":subscribe",
 		":unsubscribe",
 		":subscribers",
+		":publish",
+		":close",
 	} {
 		_ = slip.ReadString(fmt.Sprintf(`(describe-method app-hub-flavor %s out)`, method)).Eval(scope, nil)
 		tt.Equal(t, true, strings.Contains(out.String(), method))
@@ -122,12 +126,14 @@ func TestReaderDocs(t *testing.T) {
 func TestAppHubPublish(t *testing.T) {
 	scope := slip.NewScope()
 	mq := make(gi.Channel, 10)
+	defer close(mq)
 	scope.Set("mq", mq)
 
 	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
 	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
 	sub := slip.ReadString(
-		`(send hub :subscribe "top.middle.*" (lambda (m) (format t "~A~%" m) (channel-push mq m)))`).Eval(scope, nil)
+		`(send hub :subscribe "top.middle.*" (lambda (m) (channel-push mq m)))`).Eval(scope, nil)
 	scope.Let("sub", sub)
 	(&sliptest.Function{
 		Scope:  scope,
@@ -136,4 +142,123 @@ func TestAppHubPublish(t *testing.T) {
 	}).Test(t)
 	m := <-mq
 	tt.Equal(t, `"A message."`, slip.ObjectString(m))
+}
+
+func TestAppHubPublishLisp(t *testing.T) {
+	scope := slip.NewScope()
+	mq := make(gi.Channel, 10)
+	defer close(mq)
+	scope.Set("mq", mq)
+
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	sub := slip.ReadString(
+		`(send hub :subscribe "top.middle.*" (lambda (m) (channel-push mq m)))`).Eval(scope, nil)
+	scope.Let("sub", sub)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :publish "top.middle.bottom" '(a 2 c 4))`,
+		Expect: "nil",
+	}).Test(t)
+	m := <-mq
+	tt.SameType(t, slip.List{}, m)
+	tt.Equal(t, "(a 2 c 4)", m.String())
+}
+
+func TestAppHubPublishLisp2(t *testing.T) {
+	scope := slip.NewScope()
+	mq := make(gi.Channel, 10)
+	defer close(mq)
+	scope.Set("mq", mq)
+
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	sub := slip.ReadString(
+		`(send hub :subscribe "top.middle.*" (lambda (m) (channel-push mq m)) :content-type :lisp)`).Eval(scope, nil)
+	scope.Let("sub", sub)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :publish "top.middle.bottom" '(a 2 c 4))`,
+		Expect: "nil",
+	}).Test(t)
+	m := <-mq
+	tt.SameType(t, slip.List{}, m)
+	tt.Equal(t, "(a 2 c 4)", m.String())
+}
+
+func TestAppHubPublishJSON(t *testing.T) {
+	scope := slip.NewScope()
+	mq := make(gi.Channel, 10)
+	defer close(mq)
+	scope.Set("mq", mq)
+
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	sub := slip.ReadString(
+		`(send hub :subscribe "top.middle.*" (lambda (m) (channel-push mq m)))`).Eval(scope, nil)
+	scope.Let("sub", sub)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :publish "top.middle.bottom" (make-instance 'bag-flavor :parse "{a:1}"))`,
+		Expect: "nil",
+	}).Test(t)
+	m := <-mq
+	tt.SameType(t, &flavors.Instance{}, m)
+	tt.Equal(t, "/#<bag-flavor [0-9a-f]+>/", m.String())
+}
+
+func TestAppHubPublishJSON2(t *testing.T) {
+	scope := slip.NewScope()
+	mq := make(gi.Channel, 10)
+	defer close(mq)
+	scope.Set("mq", mq)
+
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	sub := slip.ReadString(
+		`(send hub :subscribe "top.middle.*" (lambda (m) (channel-push mq m)) :content-type :json)`).Eval(scope, nil)
+	scope.Let("sub", sub)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :publish "top.middle.bottom" (make-instance 'bag-flavor :parse "{a:1}"))`,
+		Expect: "nil",
+	}).Test(t)
+	m := <-mq
+	tt.SameType(t, &flavors.Instance{}, m)
+	tt.Equal(t, "/#<bag-flavor [0-9a-f]+>/", m.String())
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :publish "top.middle.bottom" (make-instance 'bag-flavor :parse "{a:1}") :sen)`,
+		Expect: "nil",
+	}).Test(t)
+	m = <-mq
+	tt.SameType(t, &flavors.Instance{}, m)
+	tt.Equal(t, "/#<bag-flavor [0-9a-f]+>/", m.String())
+}
+
+func TestAppHubPublishBad(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :publish "a.b")`,
+		PanicType: slip.Symbol("error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :publish 7 "xyz")`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :publish "a.b" (make-instance 'vanilla-flavor))`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
 }

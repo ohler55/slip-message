@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -43,30 +42,6 @@ var (
 	}
 )
 
-type appSub struct {
-	filter []string
-	sub    *subscription
-	queue  chan slip.Object
-}
-
-func (as *appSub) loop(s *slip.Scope) {
-	for {
-		msg := <-as.queue
-		if msg == nil {
-			break
-		}
-
-		// TBD convert to expected type then callback
-
-		if as.sub.callback != nil {
-			_ = as.sub.callback.Call(s, slip.List{msg}, 0)
-		} else {
-			// TBD if caller is nil then keep on queue or maybe keep a list
-			fmt.Printf("*** %s msg %s\n", as.sub.subject, msg)
-		}
-	}
-}
-
 type appHub struct {
 	subs []*appSub
 	mu   sync.Mutex // for subs list as well as distribution
@@ -90,7 +65,7 @@ func init() {
 	appHubFlavor.DefMethod(":publish", "", appHubPublishCaller{})
 	// appHubFlavor.DefMethod(":request", "", appHubRequestCaller{})
 	// appHubFlavor.DefMethod(":configure-subject", "", appHubConfigureSubjectCaller{})
-	// appHubFlavor.DefMethod(":close", "", appHubCloseCaller{})
+	appHubFlavor.DefMethod(":close", "", appHubCloseCaller{})
 }
 
 type appHubInitCaller struct{}
@@ -241,7 +216,7 @@ type appHubPublishCaller struct{}
 
 func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	if len(args) < 2 || 3 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected  2 or 3 but got %d.", len(args))
+		slip.NewPanic("Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
 	ah := self.Any.(*appHub)
@@ -290,6 +265,28 @@ func (caller appHubPublishCaller) Docs() string {
 
 
 Published a message which is delivered to any _subscribers_ matching the _subject_.
+`
+}
+
+type appHubCloseCaller struct{}
+
+func (caller appHubCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	self := s.Get("self").(*flavors.Instance)
+	ah := self.Any.(*appHub)
+	ah.mu.Lock()
+	for _, as := range ah.subs {
+		as.queue <- nil
+	}
+	ah.mu.Unlock()
+
+	return nil
+}
+
+func (caller appHubCloseCaller) Docs() string {
+	return `__:close__ => _nil_
+
+
+Close the hub.
 `
 }
 
