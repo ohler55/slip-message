@@ -1,16 +1,6 @@
 # SLIP-Message Notes
 
 - todo
- - app-hub
-  + :subscribe
-  + :unsubscribe
-  + :publish
-  + :request
-  + :close
-  - make-app-hub - same as make-instance
-  - (message-subscribe hub subject ...)
-  - (message-xxx hub)
-   - call method on hub only
 
  - queues
   - app-hub

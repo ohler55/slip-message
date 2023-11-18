@@ -121,7 +121,7 @@ func (caller appHubSubscribeCaller) Docs() string {
    _subject_ to listen on.
    _callback_ can be either _nil_ when the _:next_ method will be called on a queue or
 a function to call when a message is received.
-   _:content-type_is an optional argument of the expected content type which can be one of
+   _:content-type_ is an optional argument of the expected content type which can be one of
 _nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.
    _:name_ of the subscriber is used with work queues.
 
@@ -250,7 +250,7 @@ func (caller appHubPublishCaller) Docs() string {
  _bag-flavor_ and can be _:json_ or _:sen_.
 
 
-Published a message which is delivered to any _subscribers_ matching the _subject_.
+Publish a message which is delivered to any _subscribers_ matching the _subject_.
 `
 }
 
