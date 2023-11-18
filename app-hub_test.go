@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ohler55/ojg/tt"
 	"github.com/ohler55/slip"
@@ -115,6 +116,7 @@ func TestReaderDocs(t *testing.T) {
 		":unsubscribe",
 		":subscribers",
 		":publish",
+		":request",
 		":close",
 	} {
 		_ = slip.ReadString(fmt.Sprintf(`(describe-method app-hub-flavor %s out)`, method)).Eval(scope, nil)
@@ -259,6 +261,81 @@ func TestAppHubPublishBad(t *testing.T) {
 	(&sliptest.Function{
 		Scope:     scope,
 		Source:    `(send hub :publish "a.b" (make-instance 'vanilla-flavor))`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+}
+
+func TestAppHubRequest(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(
+		`(send hub :subscribe "requests" (lambda (m) "got it!"))`).Eval(scope, nil)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :request "requests" "A message.")`,
+		Expect: `"got it!"`,
+	}).Test(t)
+}
+
+func TestAppHubRequestTimeout(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(
+		`(send hub :subscribe "requests" (lambda (m) (sleep 0.1) "got it!"))`).Eval(scope, nil)
+	(&sliptest.Function{
+		Scope: scope,
+		Source: `(send hub :request "requests"
+                                       (make-instance 'bag-flavor :parse "{}")
+                                       :timeout 0.01 :content-type :sen)`,
+		PanicType: slip.Symbol("error"),
+	}).Test(t)
+}
+
+func TestAppHubRequestMultiReply(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(
+		`(send hub :subscribe "requests" (lambda (m) "got it in one!"))`).Eval(scope, nil)
+	_ = slip.ReadString(
+		`(send hub :subscribe "requests" (lambda (m) "got it in two!"))`).Eval(scope, nil)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :request "requests" "A message.")`,
+		Expect: `/"got it in .*!"/`,
+	}).Test(t)
+	// Wait for the slower subscriber to recover.
+	time.Sleep(time.Millisecond * 10)
+}
+
+func TestAppHubRequestBadArg(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :request "requests")`,
+		PanicType: slip.Symbol("error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :request t "message")`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :request "bad" "message" :timeout t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :request "bad" "message" :bad t)`,
 		PanicType: slip.Symbol("type-error"),
 	}).Test(t)
 }

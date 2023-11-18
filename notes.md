@@ -5,72 +5,27 @@
   + :subscribe
   + :unsubscribe
   + :publish
+  + :request
   + :close
-  - :configure-subject
-   - match up with jetstream
-   - work-queue
-    - allow multiple subscribers, send to one at a time and wait for an ack
-   - persistent with list list of consumers (subscriber name)
-    - keep queue and deliver to each, handled in the subscriber, needs ack
-  - :request
-  - make-app-hub
-
- - subscriber
-  - if callback return t then that is an ack else not acked
-  - for :next
-   - return id and msg and then subscriber needs an :ack with message id
-   - **or return msg and an ack callback**
+  - make-app-hub - same as make-instance
   - (message-subscribe hub subject ...)
+  - (message-xxx hub)
+   - call method on hub only
 
-- hub flavor
- - :configure-subject - with parameters, use jetstream model
- - :remove-subject
- - :publish (subject content &optional content-type)
-  - content can be bag [json or sen], lisp [sexp], string [raw bytes]
-  - content-type :json, :sen, :lisp, :raw, nil
-   - nil uses :json for bag, :lisp for lisp, and raw for string, others print/append
- - :subscribe (subject callback &optional content-type) => subscriber-flavor instance
-  - callback of nil waits for (send subscriber :next timeout)
-   - callback (subscriber msg-id msg error)
-    - should msg-id be context instead then (send subscriber :ack context)
- - :close - shutdown hub
- - :request (subject message &optional content-type) => reply (bag, lisp, raw)
+ - queues
+  - app-hub
+   - configure-subject
+    - consumers (names)
+    - retention
+     - :work-queue (requires use of :next)
+     - :all (requires use of :next)
+     - :push (normal, ignores consumers)
+    - max-messages
+    - max-size
+   - keep array of queues
+    - queue is a struct with subject and envelope of consumer names and message
+     - or maybe envelope is interface with retention policy
+  - subscriber :next
+   - calls to hub
 
-- local-hub-flavor
- -
- - configureable
-  - basic delivers to current subscribers
-   - list of subscribers (which have subject/filter)
-   - subscriber can queue with sub-subscribers
- - on publish verify subject
-  - walk subscribers and for any subject match copy message and use callback
-   - convert to correct format if possible else callback with error
-
-
-- body can be json, sen, or lisp. If first character is ( then lisp else sen
-- subscribers are instances
- - maybe msg-subscribe create a subscriber
-  - close to stop listening
-  - provide callback that takes subscriber, message, and message id
-   - ack with message id when processed
-   - if message id is nil then no ack needed
-- subject identifies a stream
- - manage stream characteristics separately
-- msg-hub - abstract for message hub (msg-service?) not needed, duck typing is enough
- - publish
- - request (request reply)
- - subscribe (hub subject callback &keys :content-type [:raw :json :lisp nil])
-  - if callback is nil then expect the user to (send subscriber :next)
- - receive - receive on from stream, with timeout
- - close
- -
 - jetstream-hub-flavor
-- local-hub-flavor or process-hub-flavor
-
-- subject configuration out of band possibly
- - will a simple string be enough or are jetstream variations needed?
-- publish or send is always the same
- - handling is configured out of band or through the hub
-- listen with callback
-- (:get subject) for queues
-- explicit ack if configured

@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ohler55/ojg/oj"
 	"github.com/ohler55/ojg/sen"
@@ -63,7 +64,7 @@ func init() {
 	appHubFlavor.DefMethod(":unsubscribe", "", appHubUnsubscribeCaller{})
 	appHubFlavor.DefMethod(":subscribers", "", appHubSubscribersCaller{})
 	appHubFlavor.DefMethod(":publish", "", appHubPublishCaller{})
-	// appHubFlavor.DefMethod(":request", "", appHubRequestCaller{})
+	appHubFlavor.DefMethod(":request", "", appHubRequestCaller{})
 	// appHubFlavor.DefMethod(":configure-subject", "", appHubConfigureSubjectCaller{})
 	appHubFlavor.DefMethod(":close", "", appHubCloseCaller{})
 }
@@ -116,13 +117,13 @@ func (caller appHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (
 }
 
 func (caller appHubSubscribeCaller) Docs() string {
-	return `__:subscribe__ _subject_ _callback_ &optional _content-type_ => _instance_
+	return `__:subscribe__ _subject_ _callback_ &key _content-type_ _name_ => _instance_
    _subject_ to listen on.
    _callback_ can be either _nil_ when the _:next_ method will be called on a queue or
 a function to call when a message is received.
-   _content-type_is an optional argument of the expected content type which can be one of
+   _:content-type_is an optional argument of the expected content type which can be one of
 _nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.
-
+   _:name_ of the subscriber is used with work queues.
 
 Returns a _subscriber-flavor_ instance that represents a subscription on the _subject_.
 `
@@ -229,22 +230,7 @@ func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 	} else {
 		slip.PanicType("subject", args[0], "string")
 	}
-	switch tm := args[1].(type) {
-	case slip.String:
-		msg = tm
-	case *flavors.Instance:
-		if tm.Flavor == bag.Flavor() {
-			if 2 < len(args) && args[2] == slip.Symbol(":sen") {
-				msg = slip.String(sen.String(tm.Any))
-			} else {
-				msg = slip.String(oj.JSON(tm.Any))
-			}
-		} else {
-			slip.PanicType("message", args[0], "string", "bag-flavor instance", "lisp data object")
-		}
-	default:
-		msg = slip.String(encoder.Append(nil, tm, 0))
-	}
+	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
 	ah.mu.Lock()
 	for _, as := range ah.subs {
 		if len(subject) == 0 || subjectMatch(subject, as.filter) {
@@ -265,6 +251,73 @@ func (caller appHubPublishCaller) Docs() string {
 
 
 Published a message which is delivered to any _subscribers_ matching the _subject_.
+`
+}
+
+type appHubRequestCaller struct{}
+
+func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (reply slip.Object) {
+	if len(args) < 2 {
+		slip.NewPanic("Incorrect argument count. Expected at least 2 but got %d.", len(args))
+	}
+	self := s.Get("self").(*flavors.Instance)
+	ah := self.Any.(*appHub)
+	var (
+		subject []string
+		msg     slip.Object
+		useSen  bool
+	)
+	timeout := time.Second
+	if ss, ok := args[0].(slip.String); ok {
+		subject = strings.Split(string(ss), ".")
+	} else {
+		slip.PanicType("subject", args[0], "string")
+	}
+	for i := 2; i < len(args); i += 2 {
+		switch args[i] {
+		case slip.Symbol(":content-type"):
+			useSen = args[i+1] == slip.Symbol(":sen")
+		case slip.Symbol(":timeout"):
+			if rn, ok := args[i+1].(slip.Real); ok {
+				timeout = time.Duration(rn.RealValue() * float64(time.Second))
+			} else {
+				slip.PanicType("timeout", args[i+1], "real")
+			}
+		default:
+			slip.PanicType("&key", args[i], ":name", ":content-type")
+		}
+	}
+	msg = encodeMsg(args[1], useSen)
+	replies := make(gi.Channel, 1) // TBD verify that subscribers panic when channel is closed if they are second
+	defer close(replies)
+
+	// The first subscriber to reply is the return value. Others are ignored.
+	ah.mu.Lock()
+	for _, as := range ah.subs {
+		if len(subject) == 0 || subjectMatch(subject, as.filter) {
+			as.queue <- slip.Values{msg, replies}
+		}
+	}
+	ah.mu.Unlock()
+	select {
+	case reply = <-replies:
+		// got a reply
+	case <-time.After(timeout):
+		slip.NewPanic("request to %s timed out after %s", strings.Join(subject, "."), timeout)
+	}
+	return
+}
+
+func (caller appHubRequestCaller) Docs() string {
+	return `__:request__ _subject_ _message_ &key _content-type_ _timeout_
+   _subject_ to request the message on
+   _message_ either a _string_ for :raw content, a _bag_ for JSON or SEN format, or an sexpression for _lisp_ content.
+   _:content-type_ of the message which is in effect for encoding instances of the
+ _bag-flavor_ and can be _:json_ or _:sen_.
+   _:timeout_ is a real number denoting the seconds to wait for a reply before a timeout panic.
+
+
+Send a request message on _subject_ and wait for a reply.
 `
 }
 
@@ -311,4 +364,24 @@ func subjectMatch(subject, filter []string) bool {
 		}
 	}
 	return i+1 == len(subject)
+}
+
+func encodeMsg(m slip.Object, useSen bool) (msg slip.Object) {
+	switch tm := m.(type) {
+	case slip.String:
+		msg = tm
+	case *flavors.Instance:
+		if tm.Flavor == bag.Flavor() {
+			if useSen {
+				msg = slip.String(sen.String(tm.Any))
+			} else {
+				msg = slip.String(oj.JSON(tm.Any))
+			}
+		} else {
+			slip.PanicType("message", m, "string", "bag-flavor instance", "lisp data object")
+		}
+	default:
+		msg = slip.String(encoder.Append(nil, tm, 0))
+	}
+	return
 }
