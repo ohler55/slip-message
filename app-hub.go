@@ -4,6 +4,7 @@ package main
 
 import (
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,8 +45,9 @@ var (
 )
 
 type appHub struct {
-	subs []*appSub
-	mu   sync.Mutex // for subs list as well as distribution
+	subs   []*appSub
+	queues map[string]queue
+	mu     sync.Mutex // for subs list as well as distribution
 }
 
 func init() {
@@ -65,15 +67,17 @@ func init() {
 	appHubFlavor.DefMethod(":subscribers", "", appHubSubscribersCaller{})
 	appHubFlavor.DefMethod(":publish", "", appHubPublishCaller{})
 	appHubFlavor.DefMethod(":request", "", appHubRequestCaller{})
-	// appHubFlavor.DefMethod(":configure-subject", "", appHubConfigureSubjectCaller{})
 	appHubFlavor.DefMethod(":close", "", appHubCloseCaller{})
+	appHubFlavor.DefMethod(":add-queue", "", appHubAddQueueCaller{})
+	appHubFlavor.DefMethod(":close-queue", "", appHubCloseQueueCaller{})
+	appHubFlavor.DefMethod(":queues", "", appHubQueuesCaller{})
 }
 
 type appHubInitCaller struct{}
 
 func (caller appHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	self.Any = &appHub{}
+	self.Any = &appHub{queues: map[string]queue{}}
 
 	return nil
 }
@@ -330,6 +334,9 @@ func (caller appHubCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.
 	for _, as := range ah.subs {
 		as.queue <- nil
 	}
+	for _, q := range ah.queues {
+		q.shutdown()
+	}
 	ah.mu.Unlock()
 
 	return nil
@@ -340,6 +347,119 @@ func (caller appHubCloseCaller) Docs() string {
 
 
 Close the hub.
+`
+}
+
+type appHubAddQueueCaller struct{}
+
+func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	if len(args) != 3 {
+		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
+	}
+	self := s.Get("self").(*flavors.Instance)
+	ah := self.Any.(*appHub)
+	var (
+		name      string
+		all       bool
+		consumers []string
+	)
+	if ss, ok := args[0].(slip.String); ok {
+		name = string(ss)
+	} else {
+		slip.PanicType("name", args[0], "string")
+	}
+	switch args[1] {
+	case slip.Symbol(":work"):
+		// all remains false
+	case slip.Symbol(":all"):
+		all = true
+	default:
+		slip.PanicType("retention", args[1], ":work", ":all")
+	}
+	if list, ok := args[2].(slip.List); ok {
+		consumers = make([]string, len(list))
+		for i, v := range list {
+			if ss, ok2 := v.(slip.String); ok2 {
+				consumers[i] = string(ss)
+			} else {
+				slip.PanicType("consumers element", v, "string")
+			}
+		}
+	} else {
+		slip.PanicType("consumers", args[2], "list of strings")
+	}
+	ah.mu.Lock()
+	if all {
+		ah.queues[name] = newAllQueue(name, consumers)
+	} else {
+		ah.queues[name] = newWorkQueue(name, consumers)
+	}
+	ah.mu.Unlock()
+
+	return nil
+}
+
+func (caller appHubAddQueueCaller) Docs() string {
+	return `__:add-queue__ _name_ _retention_ _consumers_ => _nil_
+   _name_ of the queue.
+   _retention_ either _:work_ for a work queue or _:all_ for a queue that provides for all consumers.
+   _consumers_ a list of consumer names.
+
+
+Add a queue with the provided parameters.
+`
+}
+
+type appHubQueuesCaller struct{}
+
+func (caller appHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	self := s.Get("self").(*flavors.Instance)
+	ah := self.Any.(*appHub)
+	list := make(slip.List, 0, len(ah.queues))
+	ah.mu.Lock()
+	for _, q := range ah.queues {
+		list = append(list, q.asLisp())
+	}
+	ah.mu.Unlock()
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].(slip.List)[0].(slip.String) < list[j].(slip.List)[0].(slip.String)
+	})
+	return list
+}
+
+func (caller appHubQueuesCaller) Docs() string {
+	return `__:queues__ => _list_
+
+
+Returns a list of queue descriptions consisting the queue name, retention, and the consumers.
+`
+}
+
+type appHubCloseQueueCaller struct{}
+
+func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	self := s.Get("self").(*flavors.Instance)
+	ah := self.Any.(*appHub)
+	var q queue
+	if ss, ok := args[0].(slip.String); ok {
+		ah.mu.Lock()
+		q = ah.queues[string(ss)]
+		delete(ah.queues, string(ss))
+		ah.mu.Unlock()
+		if q != nil {
+			q.shutdown()
+		}
+	} else {
+		slip.PanicType("name", args[0], "string")
+	}
+	return nil
+}
+
+func (caller appHubCloseQueueCaller) Docs() string {
+	return `__:close-queue__ _name_ => _nil_
+
+
+Close a queue.
 `
 }
 

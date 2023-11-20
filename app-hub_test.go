@@ -118,6 +118,9 @@ func TestReaderDocs(t *testing.T) {
 		":publish",
 		":request",
 		":close",
+		":add-queue",
+		":close-queue",
+		":queues",
 	} {
 		_ = slip.ReadString(fmt.Sprintf(`(describe-method app-hub-flavor %s out)`, method)).Eval(scope, nil)
 		tt.Equal(t, true, strings.Contains(out.String(), method))
@@ -336,6 +339,87 @@ func TestAppHubRequestBadArg(t *testing.T) {
 	(&sliptest.Function{
 		Scope:     scope,
 		Source:    `(send hub :request "bad" "message" :bad t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+}
+
+func TestAppHubQueue(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :add-queue "q2" :work '("name1" "name2"))`,
+		Expect: "nil",
+	}).Test(t)
+	queues := slip.ReadString(`(send hub :queues)`).Eval(scope, nil)
+	tt.Equal(t, `(("q2" :work "name1" "name2"))`, slip.ObjectString(queues))
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :add-queue "q3" :all '("name3" "name4"))`,
+		Expect: "nil",
+	}).Test(t)
+	queues = slip.ReadString(`(send hub :queues)`).Eval(scope, nil)
+	tt.Equal(t, `(("q2" :work "name1" "name2") ("q3" :all "name3" "name4"))`, slip.ObjectString(queues))
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :close-queue "q2")`,
+		Expect: "nil",
+	}).Test(t)
+	queues = slip.ReadString(`(send hub :queues)`).Eval(scope, nil)
+	tt.Equal(t, `(("q3" :all "name3" "name4"))`, slip.ObjectString(queues))
+}
+
+func TestAppHubAddQueuePanics(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :add-queue "q2" :work)`,
+		PanicType: slip.Symbol("error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :add-queue t :work '("name1"))`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :add-queue "q2" :bad '("name1"))`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :add-queue "q2" :bad '("name1"))`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :add-queue "q2" :work '(t))`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :add-queue "q2" :work t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+}
+
+func TestAppHubCloseQueuePanics(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :close-queue t)`,
 		PanicType: slip.Symbol("type-error"),
 	}).Test(t)
 }
