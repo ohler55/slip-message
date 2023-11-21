@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -71,6 +72,7 @@ func init() {
 	appHubFlavor.DefMethod(":add-queue", "", appHubAddQueueCaller{})
 	appHubFlavor.DefMethod(":close-queue", "", appHubCloseQueueCaller{})
 	appHubFlavor.DefMethod(":queues", "", appHubQueuesCaller{})
+	appHubFlavor.DefMethod(":next", "", appHubNextCaller{})
 }
 
 type appHubInitCaller struct{}
@@ -213,7 +215,7 @@ func (caller appHubSubscribersCaller) Docs() string {
 
 
 Returns a list of _subscriber-flavor_ instances that have subscribed to _subject_.
-A _nil_ _subject_ matches any subscriber..
+A _nil_ _subject_ matches any subscriber.
 `
 }
 
@@ -226,23 +228,28 @@ func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 	self := s.Get("self").(*flavors.Instance)
 	ah := self.Any.(*appHub)
 	var (
-		subject []string
+		subject string
+		subj    []string
 		msg     slip.Object
 	)
 	if ss, ok := args[0].(slip.String); ok {
-		subject = strings.Split(string(ss), ".")
+		subject = string(ss)
+		subj = strings.Split(subject, ".")
 	} else {
 		slip.PanicType("subject", args[0], "string")
 	}
 	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
 	ah.mu.Lock()
 	for _, as := range ah.subs {
-		if len(subject) == 0 || subjectMatch(subject, as.filter) {
+		if len(subject) == 0 || subjectMatch(subj, as.filter) {
 			as.queue <- msg
 		}
 	}
+	q := ah.queues[subject]
 	ah.mu.Unlock()
-
+	if q != nil {
+		q.push(msg)
+	}
 	return nil
 }
 
@@ -292,7 +299,7 @@ func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (re
 		}
 	}
 	msg = encodeMsg(args[1], useSen)
-	replies := make(gi.Channel, 1) // TBD verify that subscribers panic when channel is closed if they are second
+	replies := make(gi.Channel, 1)
 	defer close(replies)
 
 	// The first subscriber to reply is the return value. Others are ignored.
@@ -460,6 +467,33 @@ func (caller appHubCloseQueueCaller) Docs() string {
 
 
 Close a queue.
+`
+}
+
+type appHubNextCaller struct{}
+
+func (caller appHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	self := s.Get("self").(*flavors.Instance)
+	ah := self.Any.(*appHub)
+	fmt.Printf("*** ah: %v\n", ah)
+
+	// TBD pick queue from subscriber subject
+	// q.next subscriber name, content type
+
+	// use chan for stack in queue or for allQueue a queue for each consumer
+	// keep list for pending
+	//  could use later for status info
+
+	return nil
+}
+
+func (caller appHubNextCaller) Docs() string {
+	return `__:next__ _subscriber_ &key _timeout_ => _object_, _fixnum_
+   _subscriber_ must be a queue subscriber.
+   _:timeout_ is a real number denoting the seconds to wait for a reply before a timeout panic.
+
+
+Get the next message on a queue and return the message and message identifier.
 `
 }
 

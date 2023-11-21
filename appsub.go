@@ -24,7 +24,7 @@ func (as *appSub) loop(s *slip.Scope) {
 			msg = sv[0]
 			replies, _ = sv[1].(gi.Channel)
 		}
-		msg = as.sub.convertMessage(msg)
+		msg = decodeMessage(msg, as.sub.contentType)
 		if as.sub.callback != nil {
 			if reply := as.sub.callback.Call(s, slip.List{msg}, 0); reply != nil && replies != nil {
 				as.reply(reply, replies)

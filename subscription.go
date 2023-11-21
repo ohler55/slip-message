@@ -27,9 +27,9 @@ func (sub *subscription) setContentType(ct slip.Object) {
 	}
 }
 
-func (sub *subscription) convertMessage(msg slip.Object) slip.Object {
+func decodeMessage(msg slip.Object, contentType slip.Object) slip.Object {
 	if ss, ok := msg.(slip.String); ok && 0 < len(ss) {
-		switch sub.contentType {
+		switch contentType {
 		case nil, slip.Symbol(":auto"):
 			switch ss[0] {
 			case '{', '[':

@@ -32,12 +32,12 @@ func (q *allQueue) push(msg slip.Object) (msgID int64) {
 	return
 }
 
-func (q *allQueue) next(consumer string) (msg slip.Object, msgID int64) {
+func (q *allQueue) next(consumer string, contentType slip.Object) (msg slip.Object, msgID int64) {
 	// TBD
 	return
 }
 
-func (q *allQueue) ack(consumer string, msgID int64) {
+func (q *allQueue) ack(msgID int64) {
 	// TBD
 	return
 }
