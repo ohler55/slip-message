@@ -3,40 +3,43 @@
 package main
 
 import (
+	"time"
+
 	"github.com/ohler55/slip"
 )
 
+const defaultMaxMsgs = 1000
+
 type workQueue struct {
 	baseQueue
-	stack []*workEnv
+	stack   chan string
+	pending []int64
 }
 
-func newWorkQueue(name string, consumers []string) queue {
+func newWorkQueue(name string, maxMsgs int, consumers []string) queue {
+	if maxMsgs < 1 {
+		maxMsgs = defaultMaxMsgs
+	}
 	return &workQueue{
 		baseQueue: baseQueue{
 			name:      name,
 			consumers: consumers,
 			retention: slip.Symbol(":work"),
 		},
+		stack: make(chan string, maxMsgs),
 	}
 }
 
-func (q *workQueue) push(msg slip.Object) (msgID int64) {
-	env := workEnv{msg: string(msg.(slip.String))}
-	q.mu.Lock()
-	q.lastID++
-	msgID = q.lastID
-	env.mid = msgID
-	q.stack = append(q.stack, &env)
-	q.mu.Unlock()
-
-	return
+func (q *workQueue) push(msg slip.Object) {
+	q.stack <- string(msg.(slip.String))
 }
 
-func (q *workQueue) next(consumer string, contentType slip.Object) (msg slip.Object, msgID int64) {
+func (q *workQueue) next(
+	consumer string,
+	contentType slip.Object,
+	timeout time.Duration) (msg slip.Object, msgID int64) {
+
 	var found bool
-	q.mu.Lock()
-	defer q.mu.Unlock()
 	for _, c := range q.consumers {
 		if c == consumer {
 			found = true
@@ -46,23 +49,28 @@ func (q *workQueue) next(consumer string, contentType slip.Object) (msg slip.Obj
 	if !found {
 		slip.NewPanic("%s is not a consumer on queue %s", consumer, q.name)
 	}
-	for _, env := range q.stack {
-		if env.status == newStatus {
-			msgID = env.mid
-			msg = decodeMessage(slip.String(env.msg), contentType)
-			break
-		}
+	select {
+	case smsg := <-q.stack:
+		msg = decodeMessage(slip.String(smsg), contentType)
+		q.mu.Lock()
+		q.lastID++
+		msgID = q.lastID
+		q.pending = append(q.pending, msgID)
+		q.mu.Unlock()
+	case <-time.After(timeout):
+		// leave msg as nil and id as 0
 	}
 	return
 }
 
 func (q *workQueue) ack(msgID int64) {
 	q.mu.Lock()
-	for i, env := range q.stack {
-		if msgID == env.mid {
+	for i, mid := range q.pending {
+		if msgID == mid {
+			q.pending[i] = 0
 			if i == 0 {
-				for 0 < len(q.stack) && q.stack[0].status == ackedStatus {
-					q.stack = q.stack[1:]
+				for 0 < len(q.pending) && q.pending[0] == 0 {
+					q.pending = q.pending[1:]
 				}
 			}
 			break
@@ -72,4 +80,5 @@ func (q *workQueue) ack(msgID int64) {
 }
 
 func (q *workQueue) shutdown() {
+	close(q.stack)
 }

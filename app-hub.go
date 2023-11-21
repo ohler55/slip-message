@@ -131,6 +131,7 @@ a function to call when a message is received.
 _nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.
    _:name_ of the subscriber is used with work queues.
 
+
 Returns a _subscriber-flavor_ instance that represents a subscription on the _subject_.
 `
 }
@@ -254,7 +255,7 @@ func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 }
 
 func (caller appHubPublishCaller) Docs() string {
-	return `__:publish__ _subject_ _message_ &optional _content-type_
+	return `__:publish__ _subject_ _message_ &optional _content-type_ => _nil_
    _subject_ to publish the message on
    _message_ either a _string_ for :raw content, a _bag_ for JSON or SEN format, or an sexpression for _lisp_ content.
    _content-type_ of the message which is in effect for encoding instances of the
@@ -360,7 +361,7 @@ Close the hub.
 type appHubAddQueueCaller struct{}
 
 func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	if len(args) != 3 {
+	if len(args) < 3 || 4 < len(args) {
 		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
@@ -368,6 +369,7 @@ func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) sl
 	var (
 		name      string
 		all       bool
+		maxMsgs   int
 		consumers []string
 	)
 	if ss, ok := args[0].(slip.String); ok {
@@ -395,11 +397,18 @@ func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) sl
 	} else {
 		slip.PanicType("consumers", args[2], "list of strings")
 	}
+	if 3 < len(args) {
+		if num, ok := args[3].(slip.Fixnum); ok {
+			maxMsgs = int(num)
+		} else {
+			slip.PanicType("max-messages", args[3], "fixnum")
+		}
+	}
 	ah.mu.Lock()
 	if all {
 		ah.queues[name] = newAllQueue(name, consumers)
 	} else {
-		ah.queues[name] = newWorkQueue(name, consumers)
+		ah.queues[name] = newWorkQueue(name, maxMsgs, consumers)
 	}
 	ah.mu.Unlock()
 
@@ -407,10 +416,11 @@ func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) sl
 }
 
 func (caller appHubAddQueueCaller) Docs() string {
-	return `__:add-queue__ _name_ _retention_ _consumers_ => _nil_
+	return `__:add-queue__ _name_ _retention_ _consumers_ &optional _max-messages_ => _nil_
    _name_ of the queue.
    _retention_ either _:work_ for a work queue or _:all_ for a queue that provides for all consumers.
    _consumers_ a list of consumer names.
+   _max-messages_ maximum number of messages to queue before blocking
 
 
 Add a queue with the provided parameters.

@@ -3,6 +3,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/ohler55/slip"
 )
 
@@ -21,18 +23,15 @@ func newAllQueue(name string, consumers []string) queue {
 	}
 }
 
-func (q *allQueue) push(msg slip.Object) (msgID int64) {
-	// TBD create envelope
-	q.mu.Lock()
-	// TBD push envelope
-	q.lastID++
-	msgID = q.lastID
-	q.mu.Unlock()
-
+func (q *allQueue) push(msg slip.Object) {
+	// TBD push onto all chan
 	return
 }
 
-func (q *allQueue) next(consumer string, contentType slip.Object) (msg slip.Object, msgID int64) {
+func (q *allQueue) next(
+	consumer string,
+	contentType slip.Object,
+	timeout time.Duration) (msg slip.Object, msgID int64) {
 	// TBD
 	return
 }

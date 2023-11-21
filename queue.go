@@ -2,11 +2,15 @@
 
 package main
 
-import "github.com/ohler55/slip"
+import (
+	"time"
+
+	"github.com/ohler55/slip"
+)
 
 type queue interface {
-	push(msg slip.Object) (msgID int64)
-	next(consumer string, contentType slip.Object) (msg slip.Object, msgID int64)
+	push(msg slip.Object)
+	next(consumer string, contentType slip.Object, timeout time.Duration) (msg slip.Object, msgID int64)
 	ack(msgID int64)
 	asLisp() slip.List
 	shutdown()
