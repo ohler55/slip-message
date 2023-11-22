@@ -23,6 +23,17 @@ func newAllQueue(name string, consumers []string) queue {
 	}
 }
 
+func (q *allQueue) asLisp() (list slip.List) {
+	q.mu.Lock()
+	list = q.baseQueue.asLisp()
+	list = append(list, slip.List{slip.Symbol("retention"), slip.Tail{Value: slip.Symbol(":all")}})
+	list = append(list, slip.List{slip.Symbol("queued"), slip.Tail{Value: slip.Fixnum(0)}})  // TBD
+	list = append(list, slip.List{slip.Symbol("pending"), slip.Tail{Value: slip.Fixnum(0)}}) // TBD
+	q.mu.Unlock()
+
+	return
+}
+
 func (q *allQueue) push(msg slip.Object) {
 	// TBD push onto all chan
 	return
