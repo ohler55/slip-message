@@ -2,7 +2,6 @@
 
 - todo
  - app-hub
-  - queue returns an assoc
   - subscriber ack
    - app-hub ack (consumer message-id)
 

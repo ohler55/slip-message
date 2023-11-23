@@ -104,6 +104,7 @@ func TestSubscriberDocs(t *testing.T) {
 		":set-callback",
 		":set-content-type",
 		":close",
+		":next",
 	} {
 		_ = slip.ReadString(fmt.Sprintf(`(describe-method subscriber-flavor %s out)`, method)).Eval(scope, nil)
 		tt.Equal(t, true, strings.Contains(out.String(), method))

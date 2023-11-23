@@ -34,6 +34,7 @@ for message distributed by a message hub.`),
 	subscriberFlavor.DefMethod(":set-callback", "", subscriberSetCallbackCaller{})
 	subscriberFlavor.DefMethod(":set-content-type", "", subscriberSetContentTypeCaller{})
 	subscriberFlavor.DefMethod(":close", "", subscriberCloseCaller{})
+	subscriberFlavor.DefMethod(":next", "", subscriberNextCaller{})
 }
 
 type subscriberHubCaller struct{}
@@ -164,6 +165,25 @@ func (caller subscriberCloseCaller) Docs() string {
 
 
 Closes the subscriber which stops the subscriber from listening on it's subject.
+`
+}
+
+type subscriberNextCaller struct{}
+
+func (caller subscriberNextCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self := s.Get("self").(*flavors.Instance)
+	sub := self.Any.(*subscription)
+	if 0 < len(args) {
+		return sub.hub.Receive(s, ":next", slip.List{self, slip.Symbol(":timeout"), args[0]}, depth)
+	}
+	return sub.hub.Receive(s, ":next", slip.List{self}, depth)
+}
+
+func (caller subscriberNextCaller) Docs() string {
+	return `__:next__ &optional _timeout_=> _object_, _fixnum_
+
+
+Get the next message on a queue and return the message and message identifier.
 `
 }
 

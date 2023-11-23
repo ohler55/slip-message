@@ -121,6 +121,7 @@ func TestReaderDocs(t *testing.T) {
 		":add-queue",
 		":close-queue",
 		":queues",
+		":next",
 	} {
 		_ = slip.ReadString(fmt.Sprintf(`(describe-method app-hub-flavor %s out)`, method)).Eval(scope, nil)
 		tt.Equal(t, true, strings.Contains(out.String(), method))
@@ -453,9 +454,34 @@ func TestAppHubWorkQueue(t *testing.T) {
 	_ = slip.ReadString(`(send hub :publish "q2" "second message")`).Eval(scope, nil)
 	(&sliptest.Function{
 		Scope:  scope,
-		Source: `(send hub :next sub :timeout 0.2)`,
+		Source: `(send sub :next 0.2)`,
 		Expect: `/"second message", [0-9]+/`,
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send sub :next)`,
+		Expect: "nil",
 	}).Test(t)
 
 	// TBD inspect queue or
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :next)`,
+		PanicType: slip.Symbol("error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :next t "q2")`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :next sub :timeout t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send hub :next sub :bad t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
 }
