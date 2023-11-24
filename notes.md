@@ -1,13 +1,8 @@
 # SLIP-Message Notes
 
 - todo
- - app-hub
-  - subscriber ack
-   - app-hub ack (consumer message-id)
+ - all-queue
 
- - queues
-  - subscriber :next
-   - calls to hub
 
  - queue interface
   - push msg

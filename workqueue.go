@@ -59,16 +59,6 @@ func (q *workQueue) next(
 	if timeout <= 0 {
 		timeout = time.Nanosecond
 	}
-	var found bool
-	for _, c := range q.consumers {
-		if c == consumer {
-			found = true
-			break
-		}
-	}
-	if !found {
-		slip.NewPanic("%s is not a consumer on queue %s", consumer, q.name)
-	}
 	select {
 	case smsg := <-q.stack:
 		msg = decodeMessage(slip.String(smsg), contentType)

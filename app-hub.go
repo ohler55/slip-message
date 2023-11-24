@@ -72,6 +72,7 @@ func init() {
 	appHubFlavor.DefMethod(":close-queue", "", appHubCloseQueueCaller{})
 	appHubFlavor.DefMethod(":queues", "", appHubQueuesCaller{})
 	appHubFlavor.DefMethod(":next", "", appHubNextCaller{})
+	appHubFlavor.DefMethod(":ack", "", appHubAckCaller{})
 }
 
 type appHubInitCaller struct{}
@@ -525,6 +526,44 @@ func (caller appHubNextCaller) Docs() string {
 
 
 Get the next message on a queue and return the message and message identifier.
+`
+}
+
+type appHubAckCaller struct{}
+
+func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	if len(args) < 2 {
+		slip.NewPanic("Incorrect argument count. Expected 2 but got %d.", len(args))
+	}
+	self := s.Get("self").(*flavors.Instance)
+	ah := self.Any.(*appHub)
+	inst, ok := args[0].(*flavors.Instance)
+	if !ok || inst.Flavor != subscriberFlavor {
+		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
+	}
+	sub := inst.Any.(*subscription)
+	var mid int64
+	if num, ok2 := args[1].(slip.Fixnum); ok2 {
+		mid = int64(num)
+	} else {
+		slip.PanicType("message-id", args[1], "fixnum")
+	}
+	ah.mu.Lock()
+	q := ah.queues[sub.subject]
+	ah.mu.Unlock()
+	if q != nil {
+		q.ack(mid)
+	}
+	return nil
+}
+
+func (caller appHubAckCaller) Docs() string {
+	return `__:ack__ _subscriber_ _message-id_ => _nil_
+   _subscriber_ must be a queue subscriber.
+   _message-id_ is the identifier for the message to ACK.
+
+
+ACK a message for the subscriber.
 `
 }
 
