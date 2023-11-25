@@ -542,3 +542,61 @@ func TestAppHubWorkQueue(t *testing.T) {
 		PanicType: slip.Symbol("type-error"),
 	}).Test(t)
 }
+
+func TestAppHubAllQueue(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(`(send hub :add-queue "q2" :all '("name1" "name2") 3)`).Eval(scope, nil)
+	_ = slip.ReadString(`(send hub :publish "q2" "first message")`).Eval(scope, nil)
+	_ = slip.ReadString(`(defun condense-all-queue (q)
+                          (mapcar (lambda (stack)
+                           (list
+                            (cdr (assoc 'name stack))
+                            (cdr (assoc 'queued stack))
+                            (cdr (assoc 'pending stack))
+                            (cdr (assoc 'acked stack))))
+                           (cdr (assoc 'consumers q))))`).Eval(scope, nil)
+
+	sub1 := slip.ReadString(`(send hub :subscribe "q2" nil :name "name1")`).Eval(scope, nil)
+	scope.Let("sub1", sub1)
+	sub2 := slip.ReadString(`(send hub :subscribe "q2" nil :name "name2")`).Eval(scope, nil)
+	scope.Let("sub2", sub2)
+
+	tf := sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :next sub1)`,
+		Expect: `/"first message", [0-9]+/`,
+	}
+	tf.Test(t)
+	scope.Let("mv", tf.Result.(slip.Values)[1])
+	_ = slip.ReadString(`(send hub :publish "q2" "second message")`).Eval(scope, nil)
+
+	queue := slip.ReadString(`(condense-all-queue (car (send hub :queues)))`).Eval(scope, nil)
+	tt.Equal(t, `(("name1" 1 1 0) ("name2" 2 0 0))`, slip.ObjectString(queue))
+
+	tf = sliptest.Function{
+		Scope:  scope,
+		Source: `(send sub1 :next 0.2)`,
+		Expect: `/"second message", [0-9]+/`,
+	}
+	tf.Test(t)
+	scope.Let("mv2", tf.Result.(slip.Values)[1])
+	queue = slip.ReadString(`(condense-all-queue (car (send hub :queues)))`).Eval(scope, nil)
+	tt.Equal(t, `(("name1" 0 2 0) ("name2" 2 0 0))`, slip.ObjectString(queue))
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :ack sub1 mv)`,
+		Expect: "nil",
+	}).Test(t)
+	tf = sliptest.Function{
+		Scope:  scope,
+		Source: `(send sub2 :next)`,
+		Expect: `/"first message", [0-9]+/`,
+	}
+	tf.Test(t)
+	queue = slip.ReadString(`(condense-all-queue (car (send hub :queues)))`).Eval(scope, nil)
+	tt.Equal(t, `(("name1" 0 1 1) ("name2" 1 1 0))`, slip.ObjectString(queue))
+}
