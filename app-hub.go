@@ -406,7 +406,7 @@ func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) sl
 	}
 	ah.mu.Lock()
 	if all {
-		ah.queues[name] = newAllQueue(name, consumers)
+		ah.queues[name] = newAllQueue(name, maxMsgs, consumers)
 	} else {
 		ah.queues[name] = newWorkQueue(name, maxMsgs, consumers)
 	}
@@ -440,7 +440,7 @@ func (caller appHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int) slip
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		list = append(list, ah.queues[k].asLisp())
+		list = append(list, ah.queues[k].appendAssoc(nil))
 	}
 	ah.mu.Unlock()
 
@@ -552,7 +552,7 @@ func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Ob
 	q := ah.queues[sub.subject]
 	ah.mu.Unlock()
 	if q != nil {
-		q.ack(mid)
+		q.ack(sub.name, mid)
 	}
 	return nil
 }

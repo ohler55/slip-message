@@ -8,12 +8,10 @@ import (
 	"github.com/ohler55/slip"
 )
 
-const defaultMaxMsgs = 1000
-
 type workQueue struct {
 	baseQueue
-	stack   chan string
-	pending []int64
+	stack
+	consumers []string
 }
 
 func newWorkQueue(name string, maxMsgs int, consumers []string) queue {
@@ -21,34 +19,34 @@ func newWorkQueue(name string, maxMsgs int, consumers []string) queue {
 		maxMsgs = defaultMaxMsgs
 	}
 	return &workQueue{
-		baseQueue: baseQueue{
-			name:      name,
-			consumers: consumers,
-			retention: slip.Symbol(":work"),
+		stack: stack{
+			name: name,
+			new:  make(chan string, maxMsgs),
 		},
-		stack: make(chan string, maxMsgs),
+		consumers: consumers,
 	}
 }
 
-func (q *workQueue) asLisp() (list slip.List) {
-	q.mu.Lock()
-	list = q.baseQueue.asLisp()
-	list = append(list, slip.List{slip.Symbol("retention"), slip.Tail{Value: slip.Symbol(":work")}})
-	list = append(list, slip.List{slip.Symbol("queued"), slip.Tail{Value: slip.Fixnum(len(q.stack))}})
-	var pending slip.Fixnum
-	for _, t := range q.pending {
-		if t != 0 {
-			pending++
-		}
+func (q *workQueue) appendAssoc(list slip.List) slip.List {
+	if list == nil {
+		list = make(slip.List, 0, 7)
 	}
-	list = append(list, slip.List{slip.Symbol("pending"), slip.Tail{Value: pending}})
+	q.mu.Lock()
+	list = append(list, slip.List{slip.Symbol("retention"), slip.Tail{Value: slip.Symbol(":work")}})
+	list = q.stack.appendAssoc(list)
+	consumers := make(slip.List, len(q.consumers)+1)
+	consumers[0] = slip.Symbol("consumers")
+	for i, c := range q.consumers {
+		consumers[i+1] = slip.String(c)
+	}
+	list = append(list, consumers)
 	q.mu.Unlock()
 
-	return
+	return list
 }
 
 func (q *workQueue) push(msg slip.Object) {
-	q.stack <- string(msg.(slip.String))
+	q.new <- string(msg.(slip.String))
 }
 
 func (q *workQueue) next(
@@ -60,7 +58,7 @@ func (q *workQueue) next(
 		timeout = time.Nanosecond
 	}
 	select {
-	case smsg := <-q.stack:
+	case smsg := <-q.new:
 		msg = decodeMessage(slip.String(smsg), contentType)
 		q.mu.Lock()
 		q.lastID++
@@ -73,7 +71,7 @@ func (q *workQueue) next(
 	return
 }
 
-func (q *workQueue) ack(msgID int64) {
+func (q *workQueue) ack(_ string, msgID int64) {
 	q.mu.Lock()
 	for i, mid := range q.pending {
 		if msgID == mid {
@@ -92,5 +90,5 @@ func (q *workQueue) ack(msgID int64) {
 }
 
 func (q *workQueue) shutdown() {
-	close(q.stack)
+	close(q.new)
 }

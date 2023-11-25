@@ -356,8 +356,8 @@ func TestAppHubQueue(t *testing.T) {
 		Expect: "nil",
 	}).Test(t)
 	queues := slip.ReadString(`(send hub :queues)`).Eval(scope, nil).(slip.List)
-	tt.Equal(t, `(((name . "q2") (acked . 0) (average-ack . 0) (consumers "name1" "name2") `+
-		`(retention . :work) (queued . 0) (pending . 0)))`, slip.ObjectString(queues))
+	tt.Equal(t, `(((retention . :work) (name . "q2") (queued . 0) (pending . 0) (acked . 0) `+
+		`(average-ack . 0) (consumers "name1" "name2")))`, slip.ObjectString(queues))
 
 	(&sliptest.Function{
 		Scope:  scope,
@@ -365,11 +365,13 @@ func TestAppHubQueue(t *testing.T) {
 		Expect: "nil",
 	}).Test(t)
 	queues = slip.ReadString(`(send hub :queues)`).Eval(scope, nil).(slip.List)
-	tt.Equal(t, `((name . "q2") (acked . 0) (average-ack . 0) (consumers "name1" "name2") `+
-		`(retention . :work) (queued . 0) (pending . 0))`, slip.ObjectString(queues[0]))
+	tt.Equal(t, `((retention . :work) (name . "q2") (queued . 0) (pending . 0) (acked . 0) `+
+		`(average-ack . 0) (consumers "name1" "name2"))`, slip.ObjectString(queues[0]))
 
-	tt.Equal(t, `((name . "q3") (acked . 0) (average-ack . 0) (consumers "name3" "name4") `+
-		`(retention . :all) (queued . 0) (pending . 0))`, slip.ObjectString(queues[1]))
+	tt.Equal(t, `((retention . :all) (name . "q3")
+                  (consumers ((name . "name3") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0))
+                             ((name . "name4") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0))))`,
+		slip.ObjectString(queues[1]))
 
 	(&sliptest.Function{
 		Scope:  scope,
@@ -377,8 +379,10 @@ func TestAppHubQueue(t *testing.T) {
 		Expect: "nil",
 	}).Test(t)
 	queues = slip.ReadString(`(send hub :queues)`).Eval(scope, nil).(slip.List)
-	tt.Equal(t, `(((name . "q3") (acked . 0) (average-ack . 0) (consumers "name3" "name4") `+
-		`(retention . :all) (queued . 0) (pending . 0)))`, slip.ObjectString(queues))
+	tt.Equal(t, `(((retention . :all) (name . "q3")
+                   (consumers ((name . "name3") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0))
+                              ((name . "name4") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0)))))`,
+		slip.ObjectString(queues))
 }
 
 func TestAppHubAddQueuePanics(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 type queue interface {
 	push(msg slip.Object)
 	next(consumer string, contentType slip.Object, timeout time.Duration) (msg slip.Object, msgID int64)
-	ack(msgID int64)
-	asLisp() slip.List
+	ack(consumer string, msgID int64)
+	appendAssoc(list slip.List) slip.List
 	shutdown()
 }
