@@ -4,9 +4,10 @@ package main
 
 import (
 	"fmt"
+	"strings"
+	"sync"
 
 	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
 	"github.com/ohler55/slip"
 	"github.com/ohler55/slip/pkg/flavors"
 )
@@ -19,6 +20,13 @@ var (
 	jetstreamHubFlavor *flavors.Flavor
 )
 
+type jsHub struct {
+	js   nats.JetStream
+	nc   *nats.Conn
+	subs []*jsSub
+	mu   sync.Mutex // for subs list
+}
+
 func init() {
 	jetstreamHubFlavor = flavors.DefFlavor("jetstream-hub-flavor",
 		map[string]slip.Object{},
@@ -26,7 +34,7 @@ func init() {
 		slip.List{
 			slip.List{
 				slip.Symbol(":documentation"),
-				slip.String(`A jetstream-hub is an in-memory message distribution hub.`),
+				slip.String(`A jetstream-hub is connection to a JetStream server.`),
 			},
 		},
 	)
@@ -48,25 +56,61 @@ type jetstreamHubInitCaller struct{}
 
 func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-
-	// TBD get optional url
-	//  also tls or credentials or jwt and nkeys
-	//  tls-ca
-	//  tls-cert
-	//  tls-key
-	//  credentials
-	//  nkey
-	//  jwt
-	nc, _ := nats.Connect(nats.DefaultURL)
-	js, _ := jetstream.New(nc)
-
-	self.Any = js
+	if 0 < len(args) {
+		args = args[0].(slip.List)
+	}
+	nu := nats.DefaultURL
+	var (
+		options []nats.Option
+		tlsCert string
+		tlsKey  string
+	)
+	for i := 0; i < len(args)-1; i += 2 {
+		key, _ := args[i].(slip.Symbol)
+		value, ok := args[i+1].(slip.String)
+		if !ok {
+			slip.PanicType(string(key), args[i+1], "string")
+		}
+		switch string(key) {
+		case ":url":
+			nu = string(value)
+		case ":credentials":
+			options = append(options, nats.UserCredentials(string(value)))
+		case ":tls-ca":
+			options = append(options, nats.RootCAs(string(value)))
+		case ":tls-cert":
+			tlsCert = string(value)
+		case ":tls-key":
+			tlsKey = string(value)
+		default:
+			slip.PanicType("initializer key", args[i], ":url", ":credentials", ":tls-ca", ":tls-cert", ":tls-key")
+		}
+	}
+	if 0 < len(tlsCert) || 0 < len(tlsKey) {
+		options = append(options, nats.ClientCert(tlsCert, tlsKey))
+	}
+	var (
+		jh  jsHub
+		err error
+	)
+	if jh.nc, err = nats.Connect(nu, options...); err != nil {
+		panic(err)
+	}
+	if jh.js, err = jh.nc.JetStream(); err != nil {
+		panic(err)
+	}
+	self.Any = &jh
 
 	return nil
 }
 
 func (caller jetstreamHubInitCaller) Docs() string {
-	return `__:init__
+	return `__:init__ &key _url_ _credentials_ _tls-ca_ _tls-cert_ _tls-key_
+   _:url_ of the jetstream server
+   _:credentials_ for the jetstream connection
+   _:tls-ca_ for the jetstream connection
+   _:tls-cert_ for the jetstream connection
+   _:tls-key_ for the jetstream connection
 
 
 Sets the initial values when _make-instance_ is called.
@@ -77,69 +121,104 @@ type jetstreamHubSubscribeCaller struct{}
 
 func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (subscriber slip.Object) {
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
 
-	// TBD
-	fmt.Printf("*** js: %v\n", js)
-
+	var (
+		jsub jsSub
+		err  error
+	)
+	subscriber, jsub.sub = subscriberFromArgs(self, args)
+	jsub.filter = strings.Split(jsub.sub.subject, ".")
+	jh := self.Any.(*jsHub)
+	jh.mu.Lock()
+	jh.subs = append(jh.subs, &jsub)
+	jsub.nsub, err = jh.js.Subscribe(jsub.sub.subject, func(m *nats.Msg) {
+		msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
+		if jsub.sub.callback != nil {
+			_ = jsub.sub.callback.Call(s, slip.List{msg}, 0)
+		}
+	})
+	jh.mu.Unlock()
+	if err != nil {
+		panic(err)
+	}
 	return
 }
 
 func (caller jetstreamHubSubscribeCaller) Docs() string {
-	return `__:subscribe__ _subject_ _callback_ &key _content-type_ _name_ => _instance_
-   _subject_ to listen on.
-   _callback_ can be either _nil_ when the _:next_ method will be called on a queue or
-a function to call when a message is received.
-   _:content-type_ is an optional argument of the expected content type which can be one of
-_nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.
-   _:name_ of the subscriber is used with work queues.
-
-
-Returns a _subscriber-flavor_ instance that represents a subscription on the _subject_.
-`
+	return subscribeDocs
 }
 
 type jetstreamHubUnsubscribeCaller struct{}
 
 func (caller jetstreamHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (subscriber slip.Object) {
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
-
-	// TBD
-	fmt.Printf("*** js: %v\n", js)
-
-	return slip.Fixnum(0)
+	jh := self.Any.(*jsHub)
+	var removed []*jsSub
+	switch ts := args[0].(type) {
+	case slip.String:
+		var subs []*jsSub
+		subject := strings.Split(string(ts), ".")
+		jh.mu.Lock()
+		for _, jsub := range jh.subs {
+			if subjectMatch(jsub.filter, subject) {
+				removed = append(removed, jsub)
+				continue
+			}
+			subs = append(subs, jsub)
+		}
+		jh.subs = subs
+		jh.mu.Unlock()
+	case *flavors.Instance:
+		jh.mu.Lock()
+		for i, jsub := range jh.subs {
+			if jsub.sub.self == ts {
+				copy(jh.subs[i:], jh.subs[i+1:])
+				jh.subs = jh.subs[:len(jh.subs)-1]
+				removed = append(removed, jsub)
+				break
+			}
+		}
+		jh.mu.Unlock()
+	}
+	for _, jsub := range removed {
+		_ = jsub.nsub.Unsubscribe()
+	}
+	return slip.Fixnum(len(removed))
 }
 
 func (caller jetstreamHubUnsubscribeCaller) Docs() string {
-	return `__:unsubscribe__ _subscriber_ => _fixnum_
-   __subscriber_ can be either a subject or a specific subscriber instance.
-
-
-Returns the number of instances unsubscribed.
-`
+	return unsubscribeDocs
 }
 
 type jetstreamHubSubscribersCaller struct{}
 
 func (caller jetstreamHubSubscribersCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
+	var (
+		subs    slip.List
+		subject []string
+	)
+	if 0 < len(args) {
+		if ss, ok := args[0].(slip.String); ok {
+			subject = strings.Split(string(ss), ".")
+		} else {
+			slip.PanicType("subject", args[0], "string")
+		}
+	}
+	jh.mu.Lock()
+	for _, jsub := range jh.subs {
+		if len(subject) == 0 || subjectMatch(subject, jsub.filter) {
+			subs = append(subs, jsub.sub.self)
+		}
+	}
+	jh.mu.Unlock()
 
-	// TBD
-	fmt.Printf("*** js: %v\n", js)
-
-	return nil
+	return subs
 }
 
 func (caller jetstreamHubSubscribersCaller) Docs() string {
-	return `__:subscribers__  &optional _subject_ => _list_
-   _subject_ to filter the subscriber list.
-
-
-Returns a list of _subscriber-flavor_ instances that have subscribed to _subject_.
-A _nil_ _subject_ matches any subscriber.
-`
+	return subscribersDocs
 }
 
 type jetstreamHubPublishCaller struct{}
@@ -149,24 +228,29 @@ func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, _ in
 		slip.NewPanic("Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
 
-	// TBD
-	fmt.Printf("*** js: %v\n", js)
-
+	if len(args) < 2 || 3 < len(args) {
+		slip.NewPanic("Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
+	}
+	var (
+		subject string
+		msg     slip.Object
+	)
+	if ss, ok := args[0].(slip.String); ok {
+		subject = string(ss)
+	} else {
+		slip.PanicType("subject", args[0], "string")
+	}
+	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
+	if _, err := jh.js.Publish(subject, []byte(msg.(slip.String))); err != nil {
+		panic(err)
+	}
 	return nil
 }
 
 func (caller jetstreamHubPublishCaller) Docs() string {
-	return `__:publish__ _subject_ _message_ &optional _content-type_ => _nil_
-   _subject_ to publish the message on
-   _message_ either a _string_ for :raw content, a _bag_ for JSON or SEN format, or an sexpression for _lisp_ content.
-   _content-type_ of the message which is in effect for encoding instances of the
- _bag-flavor_ and can be _:json_ or _:sen_.
-
-
-Publish a message which is delivered to any _subscribers_ matching the _subject_.
-`
+	return publishDocs
 }
 
 type jetstreamHubRequestCaller struct{}
@@ -176,45 +260,29 @@ func (caller jetstreamHubRequestCaller) Call(s *slip.Scope, args slip.List, _ in
 		slip.NewPanic("Incorrect argument count. Expected at least 2 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
 
-	// TBD
-	fmt.Printf("*** js: %v\n", js)
+	// TBD jh.nc.Request(subject, msg, timeout)
+	fmt.Printf("*** js: %v\n", jh)
 
 	return
 }
 
 func (caller jetstreamHubRequestCaller) Docs() string {
-	return `__:request__ _subject_ _message_ &key _content-type_ _timeout_
-   _subject_ to request the message on
-   _message_ either a _string_ for :raw content, a _bag_ for JSON or SEN format, or an sexpression for _lisp_ content.
-   _:content-type_ of the message which is in effect for encoding instances of the
- _bag-flavor_ and can be _:json_ or _:sen_.
-   _:timeout_ is a real number denoting the seconds to wait for a reply before a timeout panic.
-
-
-Send a request message on _subject_ and wait for a reply.
-`
+	return requestDocs
 }
 
 type jetstreamHubCloseCaller struct{}
 
 func (caller jetstreamHubCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
-
-	// TBD
-	fmt.Printf("*** js: %v\n", js)
+	self.Any.(*jsHub).nc.Close()
 
 	return nil
 }
 
 func (caller jetstreamHubCloseCaller) Docs() string {
-	return `__:close__ => _nil_
-
-
-Close the hub.
-`
+	return closeDocs
 }
 
 type jetstreamHubAddQueueCaller struct{}
@@ -224,64 +292,48 @@ func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ i
 		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
 
 	// TBD
-	fmt.Printf("*** js: %v\n", js)
+	fmt.Printf("*** js: %v\n", jh)
 
 	return nil
 }
 
 func (caller jetstreamHubAddQueueCaller) Docs() string {
-	return `__:add-queue__ _name_ _retention_ _consumers_ &optional _max-messages_ => _nil_
-   _name_ of the queue.
-   _retention_ either _:work_ for a work queue or _:all_ for a queue that provides for all consumers.
-   _consumers_ a list of consumer names.
-   _max-messages_ maximum number of messages to queue before blocking
-
-
-Add a queue with the provided parameters.
-`
+	return addQueueDocs
 }
 
 type jetstreamHubQueuesCaller struct{}
 
 func (caller jetstreamHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
 
 	// TBD
-	fmt.Printf("*** js: %v\n", js)
+	fmt.Printf("*** js: %v\n", jh)
 
 	return nil
 }
 
 func (caller jetstreamHubQueuesCaller) Docs() string {
-	return `__:queues__ => _list_
-
-
-Returns a list of queue descriptions consisting the queue name, retention, and the consumers.
-`
+	return queuesDocs
 }
 
 type jetstreamHubCloseQueueCaller struct{}
 
 func (caller jetstreamHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
 
 	// TBD
-	fmt.Printf("*** js: %v\n", js)
+	fmt.Printf("*** js: %v\n", jh)
 
 	return nil
 }
 
 func (caller jetstreamHubCloseQueueCaller) Docs() string {
-	return `__:close-queue__ _name_ => _nil_
-
-
-Close a queue.
-`
+	return closeQueueDocs
 }
 
 type jetstreamHubNextCaller struct{}
@@ -291,22 +343,16 @@ func (caller jetstreamHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) 
 		slip.NewPanic("Incorrect argument count. Expected 1 or 3 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
 
 	// TBD
-	fmt.Printf("*** js: %v\n", js)
+	fmt.Printf("*** js: %v\n", jh)
 
 	return nil
 }
 
 func (caller jetstreamHubNextCaller) Docs() string {
-	return `__:next__ _subscriber_ &key _timeout_ => _object_, _fixnum_
-   _subscriber_ must be a queue subscriber.
-   _:timeout_ is a real number denoting the seconds to wait for a reply before a timeout panic.
-
-
-Get the next message on a queue and return the message and message identifier.
-`
+	return nextDocs
 }
 
 type jetstreamHubAckCaller struct{}
@@ -316,20 +362,14 @@ func (caller jetstreamHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) s
 		slip.NewPanic("Incorrect argument count. Expected 2 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
-	js := self.Any.(jetstream.JetStream)
+	jh := self.Any.(*jsHub)
 
 	// TBD
-	fmt.Printf("*** js: %v\n", js)
+	fmt.Printf("*** js: %v\n", jh)
 
 	return nil
 }
 
 func (caller jetstreamHubAckCaller) Docs() string {
-	return `__:ack__ _subscriber_ _message-id_ => _nil_
-   _subscriber_ must be a queue subscriber.
-   _message-id_ is the identifier for the message to ACK.
-
-
-ACK a message for the subscriber.
-`
+	return ackDocs
 }

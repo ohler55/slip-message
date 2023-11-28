@@ -27,7 +27,7 @@ func (sub *subscription) setContentType(ct slip.Object) {
 	}
 }
 
-func decodeMessage(msg slip.Object, contentType slip.Object) slip.Object {
+func decodeMessage(msg, contentType slip.Object) slip.Object {
 	if ss, ok := msg.(slip.String); ok && 0 < len(ss) {
 		switch contentType {
 		case nil, slip.Symbol(":auto"):

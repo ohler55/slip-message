@@ -11,7 +11,10 @@ import (
 	"github.com/nats-io/nats-server/v2/server"
 )
 
-var jetstreamURL = ""
+var (
+	jetstreamURL    string
+	jetstreamServer *server.Server
+)
 
 func TestMain(m *testing.M) {
 	status := wrapRun(m)
