@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats-server/v2/server"
 )
@@ -44,19 +45,24 @@ func startJetStreamServer() (jss *server.Server, ju string) {
 	var (
 		err     error
 		options = server.Options{
-			Host:                  "127.0.0.1",
-			Port:                  availablePort(),
-			NoLog:                 true,
-			NoSigs:                true,
-			MaxControlLine:        1024,
-			DisableShortFirstPing: true,
+			Host:   "127.0.0.1",
+			Port:   availablePort(),
+			NoLog:  true,
+			NoSigs: true,
 		}
 	)
 	if jss, err = server.NewServer(&options); err != nil {
 		panic(err)
 	}
+	if err = jss.EnableJetStream(nil); err != nil {
+		panic(err)
+	}
+	jss.Start()
 	ju = jss.ClientURL()
 
+	if !jss.ReadyForConnections(time.Second * 30) {
+		panic(fmt.Sprintf("failed to connect to JetStream server on %s", ju))
+	}
 	return
 }
 

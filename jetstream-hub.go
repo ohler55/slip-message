@@ -33,6 +33,14 @@ func init() {
 		nil,
 		slip.List{
 			slip.List{
+				slip.Symbol(":init-keywords"),
+				slip.Symbol(":url"),
+				slip.Symbol(":credentials"),
+				slip.Symbol(":tls-ca"),
+				slip.Symbol(":tls-cert"),
+				slip.Symbol(":tls-key"),
+			},
+			slip.List{
 				slip.Symbol(":documentation"),
 				slip.String(`A jetstream-hub is connection to a JetStream server.`),
 			},
@@ -131,7 +139,7 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 	jh := self.Any.(*jsHub)
 	jh.mu.Lock()
 	jh.subs = append(jh.subs, &jsub)
-	jsub.nsub, err = jh.js.Subscribe(jsub.sub.subject, func(m *nats.Msg) {
+	jsub.nsub, err = jh.nc.Subscribe(jsub.sub.subject, func(m *nats.Msg) {
 		msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
 		if jsub.sub.callback != nil {
 			_ = jsub.sub.callback.Call(s, slip.List{msg}, 0)
@@ -243,7 +251,7 @@ func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, _ in
 		slip.PanicType("subject", args[0], "string")
 	}
 	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
-	if _, err := jh.js.Publish(subject, []byte(msg.(slip.String))); err != nil {
+	if err := jh.nc.Publish(subject, []byte(msg.(slip.String))); err != nil {
 		panic(err)
 	}
 	return nil

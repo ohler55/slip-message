@@ -105,7 +105,7 @@ func TestAppHubSubscribe(t *testing.T) {
 	}).Test(t)
 }
 
-func TestReaderDocs(t *testing.T) {
+func TestAppHubDocs(t *testing.T) {
 	scope := slip.NewScope()
 	var out strings.Builder
 	scope.Let(slip.Symbol("out"), &slip.OutputStream{Writer: &out})
