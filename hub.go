@@ -3,6 +3,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/ohler55/ojg/oj"
 	"github.com/ohler55/ojg/sen"
 	"github.com/ohler55/slip"
@@ -139,5 +141,39 @@ func encodeMsg(m slip.Object, useSen bool) (msg slip.Object) {
 	default:
 		msg = slip.String(encoder.Append(nil, tm, 0))
 	}
+	return
+}
+
+func getRequestMsg(s *slip.Scope, args slip.List) (
+	self *flavors.Instance, subject string, msg slip.Object, timeout time.Duration) {
+	if len(args) < 2 {
+		slip.NewPanic("Incorrect argument count. Expected at least 2 but got %d.", len(args))
+	}
+	self = s.Get("self").(*flavors.Instance)
+	var (
+		useSen bool
+	)
+	timeout = time.Second
+	if ss, ok := args[0].(slip.String); ok {
+		subject = string(ss)
+	} else {
+		slip.PanicType("subject", args[0], "string")
+	}
+	for i := 2; i < len(args); i += 2 {
+		switch args[i] {
+		case slip.Symbol(":content-type"):
+			useSen = args[i+1] == slip.Symbol(":sen")
+		case slip.Symbol(":timeout"):
+			if rn, ok := args[i+1].(slip.Real); ok {
+				timeout = time.Duration(rn.RealValue() * float64(time.Second))
+			} else {
+				slip.PanicType("timeout", args[i+1], "real")
+			}
+		default:
+			slip.PanicType("&key", args[i], ":timeout", ":content-type")
+		}
+	}
+	msg = encodeMsg(args[1], useSen)
+
 	return
 }

@@ -148,3 +148,17 @@ func TestJetstreamHubPublish(t *testing.T) {
 	m := <-mq
 	tt.Equal(t, `"A message."`, slip.ObjectString(m))
 }
+
+func TestJetstreamHubRequest(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	scope.Let("jhub", hub)
+	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(
+		`(send jhub :subscribe "requests" (lambda (m) "got it!"))`).Eval(scope, nil)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :request "requests" "A message.")`,
+		Expect: `"got it!"`,
+	}).Test(t)
+}

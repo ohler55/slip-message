@@ -225,44 +225,18 @@ func (caller appHubPublishCaller) Docs() string {
 type appHubRequestCaller struct{}
 
 func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (reply slip.Object) {
-	if len(args) < 2 {
-		slip.NewPanic("Incorrect argument count. Expected at least 2 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+	self, subject, msg, timeout := getRequestMsg(s, args)
+	subj := strings.Split(subject, ".")
+
 	ah := self.Any.(*appHub)
-	var (
-		subject []string
-		msg     slip.Object
-		useSen  bool
-	)
-	timeout := time.Second
-	if ss, ok := args[0].(slip.String); ok {
-		subject = strings.Split(string(ss), ".")
-	} else {
-		slip.PanicType("subject", args[0], "string")
-	}
-	for i := 2; i < len(args); i += 2 {
-		switch args[i] {
-		case slip.Symbol(":content-type"):
-			useSen = args[i+1] == slip.Symbol(":sen")
-		case slip.Symbol(":timeout"):
-			if rn, ok := args[i+1].(slip.Real); ok {
-				timeout = time.Duration(rn.RealValue() * float64(time.Second))
-			} else {
-				slip.PanicType("timeout", args[i+1], "real")
-			}
-		default:
-			slip.PanicType("&key", args[i], ":timeout", ":content-type")
-		}
-	}
-	msg = encodeMsg(args[1], useSen)
+
 	replies := make(gi.Channel, 1)
 	defer close(replies)
 
 	// The first subscriber to reply is the return value. Others are ignored.
 	ah.mu.Lock()
 	for _, as := range ah.subs {
-		if len(subject) == 0 || subjectMatch(subject, as.filter) {
+		if len(subj) == 0 || subjectMatch(subj, as.filter) {
 			as.queue <- slip.Values{msg, replies}
 		}
 	}
@@ -271,7 +245,7 @@ func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (re
 	case reply = <-replies:
 		// got a reply
 	case <-time.After(timeout):
-		slip.NewPanic("request to %s timed out after %s", strings.Join(subject, "."), timeout)
+		slip.NewPanic("request to %s timed out after %s", subject, timeout)
 	}
 	return
 }

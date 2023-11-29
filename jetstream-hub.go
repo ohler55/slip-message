@@ -142,7 +142,13 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 	jsub.nsub, err = jh.nc.Subscribe(jsub.sub.subject, func(m *nats.Msg) {
 		msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
 		if jsub.sub.callback != nil {
-			_ = jsub.sub.callback.Call(s, slip.List{msg}, 0)
+			reply := jsub.sub.callback.Call(s, slip.List{msg}, 0)
+			if 0 < len(m.Reply) {
+				if err = m.Respond([]byte(encodeMsg(reply, false).(slip.String))); err != nil {
+					// TBD
+
+				}
+			}
 		}
 	})
 	jh.mu.Unlock()
@@ -263,17 +269,15 @@ func (caller jetstreamHubPublishCaller) Docs() string {
 
 type jetstreamHubRequestCaller struct{}
 
-func (caller jetstreamHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (reply slip.Object) {
-	if len(args) < 2 {
-		slip.NewPanic("Incorrect argument count. Expected at least 2 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+func (caller jetstreamHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	self, subject, msg, timeout := getRequestMsg(s, args)
 	jh := self.Any.(*jsHub)
 
-	// TBD jh.nc.Request(subject, msg, timeout)
-	fmt.Printf("*** js: %v\n", jh)
-
-	return
+	m, err := jh.nc.Request(subject, []byte(msg.(slip.String)), timeout)
+	if err != nil {
+		panic(err)
+	}
+	return decodeMessage(slip.String(m.Data), nil)
 }
 
 func (caller jetstreamHubRequestCaller) Docs() string {
