@@ -103,6 +103,17 @@ func TestJetstreamHubSubscribe(t *testing.T) {
 	}).Test(t)
 }
 
+func TestJetstreamHubNewErrors(t *testing.T) {
+	(&sliptest.Function{
+		Source:    `(make-instance 'jetstream-hub-flavor :url t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Source:    `(make-instance 'jetstream-hub-flavor :url "localhost:0")`,
+		PanicType: slip.Symbol("error"),
+	}).Test(t)
+}
+
 func TestJetstreamHubDocs(t *testing.T) {
 	scope := slip.NewScope()
 	var out strings.Builder
@@ -147,6 +158,17 @@ func TestJetstreamHubPublish(t *testing.T) {
 	}).Test(t)
 	m := <-mq
 	tt.Equal(t, `"A message."`, slip.ObjectString(m))
+
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send jhub :publish "nothing")`,
+		PanicType: slip.Symbol("error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send jhub :publish t "nothing")`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
 }
 
 func TestJetstreamHubRequest(t *testing.T) {
@@ -160,5 +182,17 @@ func TestJetstreamHubRequest(t *testing.T) {
 		Scope:  scope,
 		Source: `(send jhub :request "requests" "A message.")`,
 		Expect: `"got it!"`,
+	}).Test(t)
+}
+
+func TestJetstreamHubAddQueue(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	scope.Let("jhub", hub)
+	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :add-queue "q2" :work '("name1" "name2"))`,
+		Expect: "nil",
 	}).Test(t)
 }

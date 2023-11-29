@@ -3,5 +3,8 @@
 - todo
 
  - jetstream-hub-flavor
-  - create nats server for testing
-   - docker or local
+  - errors for pub sub
+  - queues
+  - need someway of reporting errors
+   - callback
+    - subject, error, reply

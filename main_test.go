@@ -35,7 +35,8 @@ func wrapRun(m *testing.M) (status int) {
 			defer jss.Shutdown()
 		}
 	}()
-
+	fmt.Printf("*** %s\n", jetstreamURL)
+	time.Sleep(time.Minute * 5)
 	status = m.Run()
 
 	return
@@ -45,10 +46,15 @@ func startJetStreamServer() (jss *server.Server, ju string) {
 	var (
 		err     error
 		options = server.Options{
-			Host:   "127.0.0.1",
-			Port:   availablePort(),
-			NoLog:  true,
-			NoSigs: true,
+			Host:     "127.0.0.1",
+			Port:     availablePort(),
+			NoLog:    true,
+			NoSigs:   true,
+			Users:    []*server.User{{Username: "foo", Password: "bar"}},
+			Username: "foo",
+			Password: "bar",
+			// NoAuthUser:  "foo",
+			AllowNonTLS: true,
 		}
 	)
 	if jss, err = server.NewServer(&options); err != nil {

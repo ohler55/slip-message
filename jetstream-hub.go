@@ -21,7 +21,7 @@ var (
 )
 
 type jsHub struct {
-	js   nats.JetStream
+	js   nats.JetStreamContext
 	nc   *nats.Conn
 	subs []*jsSub
 	mu   sync.Mutex // for subs list
@@ -97,6 +97,7 @@ func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	if 0 < len(tlsCert) || 0 < len(tlsKey) {
 		options = append(options, nats.ClientCert(tlsCert, tlsKey))
 	}
+	options = append(options, nats.UserInfo("foo", "bar"))
 	var (
 		jh  jsHub
 		err error
@@ -243,10 +244,6 @@ func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, _ in
 	}
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)
-
-	if len(args) < 2 || 3 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
-	}
 	var (
 		subject string
 		msg     slip.Object
@@ -305,9 +302,20 @@ func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ i
 	}
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)
+	_, err := jh.js.AddStream(&nats.StreamConfig{
+		Name:      "a-name", // TBD
+		Subjects:  []string{"foo.bar"},
+		Retention: nats.WorkQueuePolicy, // or InterestPolicy
+		// MaxMsgs: 100,
+	})
+	if err != nil {
+		panic(err)
+	}
+	// TBD AddConsumer("a-name", cfg)
 
-	// TBD
-	fmt.Printf("*** js: %v\n", jh)
+	for stream := range jh.js.Streams() {
+		fmt.Printf("***  %v\n", stream)
+	}
 
 	return nil
 }
