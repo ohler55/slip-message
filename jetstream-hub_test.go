@@ -205,7 +205,7 @@ func TestJetstreamHubAddQueue(t *testing.T) {
 	}).Test(t)
 	(&sliptest.Function{
 		Scope:  scope,
-		Source: `(send jhub :queues)`,
-		Expect: `((name . "q2") (retention . :work) (queued . 0) (consumers "name1"))`,
+		Source: `(assoc '(name . "q2") (send jhub :queues))`,
+		Expect: `((name . "q2") (retention . :work) (queued . 0) (consumers "name1") (subjects "q2"))`,
 	}).Test(t)
 }

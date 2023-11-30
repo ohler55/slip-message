@@ -21,10 +21,11 @@ var (
 )
 
 type jsHub struct {
-	js   nats.JetStreamContext
-	nc   *nats.Conn
-	subs []*jsSub
-	mu   sync.Mutex // for subs list
+	js    nats.JetStreamContext
+	nc    *nats.Conn
+	subs  []*jsSub
+	mu    sync.Mutex // for subs list
+	errCb slip.Caller
 }
 
 func init() {
@@ -58,6 +59,7 @@ func init() {
 	jetstreamHubFlavor.DefMethod(":queues", "", jetstreamHubQueuesCaller{})
 	jetstreamHubFlavor.DefMethod(":next", "", jetstreamHubNextCaller{})
 	jetstreamHubFlavor.DefMethod(":ack", "", jetstreamHubAckCaller{})
+	// TBD :error-handler
 }
 
 type jetstreamHubInitCaller struct{}
@@ -140,15 +142,8 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 	jh.mu.Lock()
 	jh.subs = append(jh.subs, &jsub)
 	jsub.nsub, err = jh.nc.Subscribe(subject, func(m *nats.Msg) {
-		msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
-		if jsub.sub.callback != nil {
-			reply := jsub.sub.callback.Call(s, slip.List{msg}, 0)
-			if 0 < len(m.Reply) {
-				if err = m.Respond([]byte(encodeMsg(reply, false).(slip.String))); err != nil {
-					// TBD
-
-				}
-			}
+		if serr := callMsgCallback(s, m, &jsub); serr != nil && jh.errCb != nil {
+			_ = safeCall(s, jh.errCb, slip.List{serr})
 		}
 	})
 	jh.mu.Unlock()
@@ -299,9 +294,6 @@ func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ i
 	self, name, all, maxMsgs, consumers, subjects := getAddQueueArgs(s, args)
 	jh := self.Any.(*jsHub)
 
-	// TBD if exists then update
-	_ = jh.js.DeleteStream(name)
-
 	cfg := nats.StreamConfig{
 		Name:      name,
 		Subjects:  subjects,
@@ -338,7 +330,10 @@ func (caller jetstreamHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int
 	var list slip.List
 top:
 	for stream := range jh.js.Streams() {
-		var ret slip.Object
+		var (
+			sa  slip.List
+			ret slip.Object
+		)
 		switch stream.Config.Retention {
 		case nats.InterestPolicy:
 			ret = slip.Symbol(":all")
@@ -347,18 +342,24 @@ top:
 		default:
 			continue top
 		}
-		list = append(list, slip.List{slip.Symbol("name"), slip.Tail{Value: slip.String(stream.Config.Name)}})
-		list = append(list, slip.List{slip.Symbol("retention"), slip.Tail{Value: ret}})
-		list = append(list, slip.List{slip.Symbol("queued"), slip.Tail{Value: slip.Fixnum(stream.State.Msgs)}})
+		sa = append(sa, slip.List{slip.Symbol("name"), slip.Tail{Value: slip.String(stream.Config.Name)}})
+		sa = append(sa, slip.List{slip.Symbol("retention"), slip.Tail{Value: ret}})
+		sa = append(sa, slip.List{slip.Symbol("queued"), slip.Tail{Value: slip.Fixnum(stream.State.Msgs)}})
 		var ca slip.List
 		ca = append(ca, slip.Symbol("consumers"))
 		for c := range jh.js.ConsumerNames(stream.Config.Name) {
 			ca = append(ca, slip.String(c))
 		}
-		list = append(list, ca)
-	}
-	// TBD sort
+		sa = append(sa, ca)
+		var subjects slip.List
+		subjects = append(subjects, slip.Symbol("subjects"))
+		for _, subj := range stream.Config.Subjects {
+			subjects = append(subjects, slip.String(subj))
+		}
+		sa = append(sa, subjects)
 
+		list = append(list, sa)
+	}
 	return list
 }
 

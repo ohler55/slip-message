@@ -385,7 +385,7 @@ func TestAppHubQueue(t *testing.T) {
 	tt.Equal(t, `(((retention . :all) (name . "q3")
                    (consumers ((name . "name3") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0))
                               ((name . "name4") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0)))
-                    (subjects "q2")))`,
+                   (subjects "q3")))`,
 		slip.ObjectString(queues))
 }
 
@@ -552,7 +552,7 @@ func TestAppHubAllQueue(t *testing.T) {
 	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
 	scope.Let("hub", hub)
 	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
-	_ = slip.ReadString(`(send hub :add-queue "q2" :all '("name1" "name2") 3)`).Eval(scope, nil)
+	_ = slip.ReadString(`(send hub :add-queue "q2" :all '("name1" "name2") :max-messages 3)`).Eval(scope, nil)
 	_ = slip.ReadString(`(send hub :publish "q2" "first message")`).Eval(scope, nil)
 	_ = slip.ReadString(`(defun condense-all-queue (q)
                           (mapcar (lambda (stack)

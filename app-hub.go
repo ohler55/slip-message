@@ -329,7 +329,7 @@ func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) 
 			if name == q.qname() {
 				found = q
 				if i < len(ah.queues)-1 {
-					copy(ah.queues[:i], ah.queues[i+1:])
+					copy(ah.queues[i:], ah.queues[i+1:])
 				}
 				ah.queues = ah.queues[:len(ah.queues)-1]
 				break

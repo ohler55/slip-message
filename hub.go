@@ -5,6 +5,7 @@ package main
 import (
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/ohler55/ojg/oj"
 	"github.com/ohler55/ojg/sen"
 	"github.com/ohler55/slip"
@@ -183,7 +184,7 @@ func getRequestMsg(s *slip.Scope, args slip.List) (
 func getAddQueueArgs(s *slip.Scope, args slip.List) (
 	self *flavors.Instance, name string, all bool, maxMsgs int, consumers, subjects []string) {
 
-	if len(args) < 3 || 4 < len(args) {
+	if len(args) < 3 || 7 < len(args) {
 		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
 	}
 	self = s.Get("self").(*flavors.Instance)
@@ -240,4 +241,37 @@ func getAddQueueArgs(s *slip.Scope, args slip.List) (
 		subjects = []string{name}
 	}
 	return
+}
+
+func callMsgCallback(s *slip.Scope, m *nats.Msg, jsub *jsSub) (result slip.Object) {
+	defer func() {
+		switch rec := recover().(type) {
+		case nil, slip.Object:
+			// leave as is
+		default:
+			result = slip.NewError("%s", rec)
+		}
+	}()
+	msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
+	if jsub.sub.callback != nil {
+		reply := jsub.sub.callback.Call(s, slip.List{msg}, 0)
+		if 0 < len(m.Reply) {
+			if err := m.Respond([]byte(encodeMsg(reply, false).(slip.String))); err != nil {
+				panic(err)
+			}
+		}
+	}
+	return
+}
+
+func safeCall(s *slip.Scope, caller slip.Caller, args slip.List) (result slip.Object) {
+	defer func() {
+		switch rec := recover().(type) {
+		case nil, slip.Object:
+			// leave as is
+		default:
+			result = slip.NewError("%s", rec)
+		}
+	}()
+	return caller.Call(s, args, 0)
 }
