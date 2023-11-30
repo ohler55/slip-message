@@ -97,7 +97,6 @@ func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	if 0 < len(tlsCert) || 0 < len(tlsKey) {
 		options = append(options, nats.ClientCert(tlsCert, tlsKey))
 	}
-	options = append(options, nats.UserInfo("foo", "bar"))
 	var (
 		jh  jsHub
 		err error
@@ -132,15 +131,15 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 	self := s.Get("self").(*flavors.Instance)
 
 	var (
-		jsub jsSub
-		err  error
+		jsub    jsSub
+		err     error
+		subject string
 	)
-	subscriber, jsub.sub = subscriberFromArgs(self, args)
-	jsub.filter = strings.Split(jsub.sub.subject, ".")
+	subscriber, jsub.sub, subject = subscriberFromArgs(self, args)
 	jh := self.Any.(*jsHub)
 	jh.mu.Lock()
 	jh.subs = append(jh.subs, &jsub)
-	jsub.nsub, err = jh.nc.Subscribe(jsub.sub.subject, func(m *nats.Msg) {
+	jsub.nsub, err = jh.nc.Subscribe(subject, func(m *nats.Msg) {
 		msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
 		if jsub.sub.callback != nil {
 			reply := jsub.sub.callback.Call(s, slip.List{msg}, 0)
@@ -175,7 +174,7 @@ func (caller jetstreamHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, 
 		subject := strings.Split(string(ts), ".")
 		jh.mu.Lock()
 		for _, jsub := range jh.subs {
-			if subjectMatch(jsub.filter, subject) {
+			if subjectMatch(jsub.sub.subject, subject) {
 				removed = append(removed, jsub)
 				continue
 			}
@@ -223,7 +222,7 @@ func (caller jetstreamHubSubscribersCaller) Call(s *slip.Scope, args slip.List, 
 	}
 	jh.mu.Lock()
 	for _, jsub := range jh.subs {
-		if len(subject) == 0 || subjectMatch(subject, jsub.filter) {
+		if len(subject) == 0 || subjectMatch(subject, jsub.sub.subject) {
 			subs = append(subs, jsub.sub.self)
 		}
 	}
@@ -297,26 +296,32 @@ func (caller jetstreamHubCloseCaller) Docs() string {
 type jetstreamHubAddQueueCaller struct{}
 
 func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	if len(args) < 3 || 4 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+	self, name, all, maxMsgs, consumers, subjects := getAddQueueArgs(s, args)
 	jh := self.Any.(*jsHub)
-	_, err := jh.js.AddStream(&nats.StreamConfig{
-		Name:      "a-name", // TBD
-		Subjects:  []string{"foo.bar"},
-		Retention: nats.WorkQueuePolicy, // or InterestPolicy
-		// MaxMsgs: 100,
-	})
-	if err != nil {
+
+	// TBD if exists then update
+	_ = jh.js.DeleteStream(name)
+
+	cfg := nats.StreamConfig{
+		Name:      name,
+		Subjects:  subjects,
+		Retention: nats.WorkQueuePolicy,
+	}
+	if all {
+		cfg.Retention = nats.InterestPolicy
+	}
+	if 0 < maxMsgs {
+		cfg.MaxMsgs = int64(maxMsgs)
+	}
+	if _, err := jh.js.AddStream(&cfg); err != nil {
 		panic(err)
 	}
-	// TBD AddConsumer("a-name", cfg)
-
-	for stream := range jh.js.Streams() {
-		fmt.Printf("***  %v\n", stream)
+	for _, cn := range consumers {
+		_, err := jh.js.AddConsumer(name, &nats.ConsumerConfig{Name: cn, AckPolicy: nats.AckExplicitPolicy})
+		if err != nil {
+			panic(err)
+		}
 	}
-
 	return nil
 }
 
@@ -330,10 +335,31 @@ func (caller jetstreamHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)
 
-	// TBD
-	fmt.Printf("*** js: %v\n", jh)
+	var list slip.List
+top:
+	for stream := range jh.js.Streams() {
+		var ret slip.Object
+		switch stream.Config.Retention {
+		case nats.InterestPolicy:
+			ret = slip.Symbol(":all")
+		case nats.WorkQueuePolicy:
+			ret = slip.Symbol(":work")
+		default:
+			continue top
+		}
+		list = append(list, slip.List{slip.Symbol("name"), slip.Tail{Value: slip.String(stream.Config.Name)}})
+		list = append(list, slip.List{slip.Symbol("retention"), slip.Tail{Value: ret}})
+		list = append(list, slip.List{slip.Symbol("queued"), slip.Tail{Value: slip.Fixnum(stream.State.Msgs)}})
+		var ca slip.List
+		ca = append(ca, slip.Symbol("consumers"))
+		for c := range jh.js.ConsumerNames(stream.Config.Name) {
+			ca = append(ca, slip.String(c))
+		}
+		list = append(list, ca)
+	}
+	// TBD sort
 
-	return nil
+	return list
 }
 
 func (caller jetstreamHubQueuesCaller) Docs() string {

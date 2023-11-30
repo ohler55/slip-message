@@ -4,6 +4,7 @@ package main
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ohler55/slip"
@@ -15,11 +16,18 @@ type allQueue struct {
 	consumers map[string]*stack
 }
 
-func newAllQueue(name string, maxMsgs int, consumers []string) queue {
+func newAllQueue(name string, maxMsgs int, consumers, subjects []string) queue {
 	if maxMsgs < 1 {
 		maxMsgs = defaultMaxMsgs
 	}
+	filters := make([][]string, len(subjects))
+	for i, sub := range subjects {
+		filters[i] = strings.Split(sub, ".")
+	}
 	q := allQueue{
+		baseQueue: baseQueue{
+			subjects: filters,
+		},
 		name:      name,
 		consumers: map[string]*stack{},
 	}
@@ -30,6 +38,10 @@ func newAllQueue(name string, maxMsgs int, consumers []string) queue {
 		}
 	}
 	return &q
+}
+
+func (q *allQueue) qname() string {
+	return q.name
 }
 
 func (q *allQueue) appendAssoc(list slip.List) slip.List {
@@ -49,8 +61,9 @@ func (q *allQueue) appendAssoc(list slip.List) slip.List {
 	for _, cn := range cnames {
 		consumers = append(consumers, q.consumers[cn].appendAssoc(nil))
 	}
-	q.mu.Unlock()
 	list = append(list, consumers)
+	list = append(list, q.subjectList())
+	q.mu.Unlock()
 
 	return list
 }

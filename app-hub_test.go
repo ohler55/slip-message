@@ -357,7 +357,8 @@ func TestAppHubQueue(t *testing.T) {
 	}).Test(t)
 	queues := slip.ReadString(`(send hub :queues)`).Eval(scope, nil).(slip.List)
 	tt.Equal(t, `(((retention . :work) (name . "q2") (queued . 0) (pending . 0) (acked . 0) `+
-		`(average-ack . 0) (consumers "name1" "name2")))`, slip.ObjectString(queues))
+		`(average-ack . 0) (consumers "name1" "name2")
+                    (subjects "q2")))`, slip.ObjectString(queues))
 
 	(&sliptest.Function{
 		Scope:  scope,
@@ -366,11 +367,13 @@ func TestAppHubQueue(t *testing.T) {
 	}).Test(t)
 	queues = slip.ReadString(`(send hub :queues)`).Eval(scope, nil).(slip.List)
 	tt.Equal(t, `((retention . :work) (name . "q2") (queued . 0) (pending . 0) (acked . 0) `+
-		`(average-ack . 0) (consumers "name1" "name2"))`, slip.ObjectString(queues[0]))
+		`(average-ack . 0) (consumers "name1" "name2")
+                   (subjects "q2"))`, slip.ObjectString(queues[0]))
 
 	tt.Equal(t, `((retention . :all) (name . "q3")
                   (consumers ((name . "name3") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0))
-                             ((name . "name4") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0))))`,
+                             ((name . "name4") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0)))
+                  (subjects "q3"))`,
 		slip.ObjectString(queues[1]))
 
 	(&sliptest.Function{
@@ -381,7 +384,8 @@ func TestAppHubQueue(t *testing.T) {
 	queues = slip.ReadString(`(send hub :queues)`).Eval(scope, nil).(slip.List)
 	tt.Equal(t, `(((retention . :all) (name . "q3")
                    (consumers ((name . "name3") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0))
-                              ((name . "name4") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0)))))`,
+                              ((name . "name4") (queued . 0) (pending . 0) (acked . 0) (average-ack . 0)))
+                    (subjects "q2")))`,
 		slip.ObjectString(queues))
 }
 
@@ -446,7 +450,7 @@ func TestAppHubWorkQueue(t *testing.T) {
 	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
 	scope.Let("hub", hub)
 	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
-	_ = slip.ReadString(`(send hub :add-queue "q2" :work '("name1" "name2") 3)`).Eval(scope, nil)
+	_ = slip.ReadString(`(send hub :add-queue "q2" :work '("name1" "name2") :max-messages 3)`).Eval(scope, nil)
 	_ = slip.ReadString(`(send hub :publish "q2" "first message")`).Eval(scope, nil)
 	_ = slip.ReadString(`(defun condense-queue (q)
                           (list

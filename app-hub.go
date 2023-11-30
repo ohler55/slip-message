@@ -4,7 +4,6 @@ package main
 
 import (
 	"math"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,7 +42,7 @@ var (
 
 type appHub struct {
 	subs   []*appSub
-	queues map[string]queue
+	queues []queue
 	mu     sync.Mutex // for subs list as well as distribution
 }
 
@@ -76,7 +75,7 @@ type appHubInitCaller struct{}
 
 func (caller appHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	self.Any = &appHub{queues: map[string]queue{}}
+	self.Any = &appHub{}
 
 	return nil
 }
@@ -95,8 +94,8 @@ func (caller appHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (
 	self := s.Get("self").(*flavors.Instance)
 
 	var sub *subscription
-	subscriber, sub = subscriberFromArgs(self, args)
-	as := appSub{filter: strings.Split(sub.subject, "."), sub: sub, queue: make(gi.Channel, 32)}
+	subscriber, sub, _ = subscriberFromArgs(self, args)
+	as := appSub{sub: sub, queue: make(gi.Channel, 32)}
 	go as.loop(s)
 
 	ah := self.Any.(*appHub)
@@ -123,7 +122,7 @@ func (caller appHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, _ int)
 		subject := strings.Split(string(ts), ".")
 		ah.mu.Lock()
 		for _, as := range ah.subs {
-			if subjectMatch(as.filter, subject) {
+			if subjectMatch(as.sub.subject, subject) {
 				removed = append(removed, as)
 				continue
 			}
@@ -171,7 +170,7 @@ func (caller appHubSubscribersCaller) Call(s *slip.Scope, args slip.List, _ int)
 	}
 	ah.mu.Lock()
 	for _, ls := range ah.subs {
-		if len(subject) == 0 || subjectMatch(subject, ls.filter) {
+		if len(subject) == 0 || subjectMatch(subject, ls.sub.subject) {
 			subs = append(subs, ls.sub.self)
 		}
 	}
@@ -206,15 +205,17 @@ func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
 	ah.mu.Lock()
 	for _, as := range ah.subs {
-		if len(subject) == 0 || subjectMatch(subj, as.filter) {
+		if len(subject) == 0 || subjectMatch(subj, as.sub.subject) {
 			as.queue <- msg
 		}
 	}
-	q := ah.queues[subject]
-	ah.mu.Unlock()
-	if q != nil {
-		q.push(msg)
+	for _, q := range ah.queues {
+		if q.subjectMatch(subj) {
+			q.push(msg)
+		}
 	}
+	ah.mu.Unlock()
+
 	return nil
 }
 
@@ -236,7 +237,7 @@ func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (re
 	// The first subscriber to reply is the return value. Others are ignored.
 	ah.mu.Lock()
 	for _, as := range ah.subs {
-		if len(subj) == 0 || subjectMatch(subj, as.filter) {
+		if len(subj) == 0 || subjectMatch(subj, as.sub.subject) {
 			as.queue <- slip.Values{msg, replies}
 		}
 	}
@@ -278,54 +279,14 @@ func (caller appHubCloseCaller) Docs() string {
 type appHubAddQueueCaller struct{}
 
 func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	if len(args) < 3 || 4 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+	self, name, all, maxMsgs, consumers, subjects := getAddQueueArgs(s, args)
 	ah := self.Any.(*appHub)
-	var (
-		name      string
-		all       bool
-		maxMsgs   int
-		consumers []string
-	)
-	if ss, ok := args[0].(slip.String); ok {
-		name = string(ss)
-	} else {
-		slip.PanicType("name", args[0], "string")
-	}
-	switch args[1] {
-	case slip.Symbol(":work"):
-		// all remains false
-	case slip.Symbol(":all"):
-		all = true
-	default:
-		slip.PanicType("retention", args[1], ":work", ":all")
-	}
-	if list, ok := args[2].(slip.List); ok {
-		consumers = make([]string, len(list))
-		for i, v := range list {
-			if ss, ok2 := v.(slip.String); ok2 {
-				consumers[i] = string(ss)
-			} else {
-				slip.PanicType("consumers element", v, "string")
-			}
-		}
-	} else {
-		slip.PanicType("consumers", args[2], "list of strings")
-	}
-	if 3 < len(args) {
-		if num, ok := args[3].(slip.Fixnum); ok {
-			maxMsgs = int(num)
-		} else {
-			slip.PanicType("max-messages", args[3], "fixnum")
-		}
-	}
+
 	ah.mu.Lock()
 	if all {
-		ah.queues[name] = newAllQueue(name, maxMsgs, consumers)
+		ah.queues = append(ah.queues, newAllQueue(name, maxMsgs, consumers, subjects))
 	} else {
-		ah.queues[name] = newWorkQueue(name, maxMsgs, consumers)
+		ah.queues = append(ah.queues, newWorkQueue(name, maxMsgs, consumers, subjects))
 	}
 	ah.mu.Unlock()
 
@@ -343,13 +304,8 @@ func (caller appHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int) slip
 	ah := self.Any.(*appHub)
 	list := make(slip.List, 0, len(ah.queues))
 	ah.mu.Lock()
-	keys := make([]string, 0, len(ah.queues))
-	for k := range ah.queues {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		list = append(list, ah.queues[k].appendAssoc(nil))
+	for _, q := range ah.queues {
+		list = append(list, q.appendAssoc(nil))
 	}
 	ah.mu.Unlock()
 
@@ -365,14 +321,23 @@ type appHubCloseQueueCaller struct{}
 func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	ah := self.Any.(*appHub)
-	var q queue
 	if ss, ok := args[0].(slip.String); ok {
+		name := string(ss)
 		ah.mu.Lock()
-		q = ah.queues[string(ss)]
-		delete(ah.queues, string(ss))
+		var found queue
+		for i, q := range ah.queues {
+			if name == q.qname() {
+				found = q
+				if i < len(ah.queues)-1 {
+					copy(ah.queues[:i], ah.queues[i+1:])
+				}
+				ah.queues = ah.queues[:len(ah.queues)-1]
+				break
+			}
+		}
 		ah.mu.Unlock()
-		if q != nil {
-			q.shutdown()
+		if found != nil {
+			found.shutdown()
 		}
 	} else {
 		slip.PanicType("name", args[0], "string")
@@ -409,11 +374,17 @@ func (caller appHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.O
 			slip.PanicType("&key", args[i], ":timeout")
 		}
 	}
+	var found queue
 	ah.mu.Lock()
-	q := ah.queues[sub.subject]
+	for _, q := range ah.queues {
+		if q.subjectMatch(sub.subject) {
+			found = q
+			break
+		}
+	}
 	ah.mu.Unlock()
-	if q != nil {
-		if msg, mid := q.next(sub.name, sub.contentType, timeout); msg != nil {
+	if found != nil {
+		if msg, mid := found.next(sub.name, sub.contentType, timeout); msg != nil {
 			return slip.Values{msg, slip.Fixnum(mid)}
 		}
 	}
@@ -443,11 +414,17 @@ func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Ob
 	} else {
 		slip.PanicType("message-id", args[1], "fixnum")
 	}
+	var found queue
 	ah.mu.Lock()
-	q := ah.queues[sub.subject]
+	for _, q := range ah.queues {
+		if q.subjectMatch(sub.subject) {
+			found = q
+			break
+		}
+	}
 	ah.mu.Unlock()
-	if q != nil {
-		q.ack(sub.name, mid)
+	if found != nil {
+		found.ack(sub.name, mid)
 	}
 	return nil
 }

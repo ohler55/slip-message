@@ -8,9 +8,8 @@ import (
 )
 
 type appSub struct {
-	filter []string
-	sub    *subscription
-	queue  chan slip.Object
+	sub   *subscription
+	queue chan slip.Object
 }
 
 func (as *appSub) loop(s *slip.Scope) {

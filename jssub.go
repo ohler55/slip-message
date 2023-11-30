@@ -5,7 +5,6 @@ package main
 import "github.com/nats-io/nats.go"
 
 type jsSub struct {
-	filter []string
-	sub    *subscription
-	nsub   *nats.Subscription
+	sub  *subscription
+	nsub *nats.Subscription
 }

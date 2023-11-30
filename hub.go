@@ -67,11 +67,12 @@ Send a request message on _subject_ and wait for a reply.
 Close the hub.
 `
 
-	addQueueDocs = `__:add-queue__ _name_ _retention_ _consumers_ &optional _max-messages_ => _nil_
+	addQueueDocs = `__:add-queue__ _name_ _retention_ _consumers_ &key _max-messages_ _subjects_ => _nil_
    _name_ of the queue.
    _retention_ either _:work_ for a work queue or _:all_ for a queue that provides for all consumers.
-   _consumers_ a list of consumer names.
+   _consumers_ a list of consumer names. For work queues there can only be one consumer name.
    _max-messages_ maximum number of messages to queue before blocking
+   _subjects_ to listen on. If none are provided then the queue _name_ is used as the only subject.
 
 
 Add a queue with the provided parameters.
@@ -106,7 +107,8 @@ ACK a message for the subscriber.
 `
 )
 
-func subscriberFromArgs(self *flavors.Instance, args slip.List) (subscriber slip.Object, sub *subscription) {
+func subscriberFromArgs(self *flavors.Instance, args slip.List) (
+	subscriber slip.Object, sub *subscription, subject string) {
 	var (
 		ct   slip.Object
 		name slip.Object
@@ -175,5 +177,67 @@ func getRequestMsg(s *slip.Scope, args slip.List) (
 	}
 	msg = encodeMsg(args[1], useSen)
 
+	return
+}
+
+func getAddQueueArgs(s *slip.Scope, args slip.List) (
+	self *flavors.Instance, name string, all bool, maxMsgs int, consumers, subjects []string) {
+
+	if len(args) < 3 || 4 < len(args) {
+		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
+	}
+	self = s.Get("self").(*flavors.Instance)
+	if ss, ok := args[0].(slip.String); ok {
+		name = string(ss)
+	} else {
+		slip.PanicType("name", args[0], "string")
+	}
+	switch args[1] {
+	case slip.Symbol(":work"):
+		// all remains false
+	case slip.Symbol(":all"):
+		all = true
+	default:
+		slip.PanicType("retention", args[1], ":work", ":all")
+	}
+	if list, ok := args[2].(slip.List); ok {
+		consumers = make([]string, len(list))
+		for i, v := range list {
+			if ss, ok2 := v.(slip.String); ok2 {
+				consumers[i] = string(ss)
+			} else {
+				slip.PanicType("consumers element", v, "string")
+			}
+		}
+	} else {
+		slip.PanicType("consumers", args[2], "list of strings")
+	}
+	for i := 3; i < len(args); i += 2 {
+		switch args[i] {
+		case slip.Symbol(":max-messages"):
+			if num, ok := args[i+1].(slip.Fixnum); ok && 0 < num {
+				maxMsgs = int(num)
+			} else {
+				slip.PanicType(":max-messages", args[i+1], "fixnum")
+			}
+		case slip.Symbol(":subjects"):
+			if sa, ok := args[i+1].(slip.List); ok {
+				for _, v := range sa {
+					if ss, ok2 := v.(slip.String); ok2 {
+						subjects = append(subjects, string(ss))
+					} else {
+						slip.PanicType(":subjects elements", v, "string")
+					}
+				}
+			} else {
+				slip.PanicType(":subjects", args[i+1], "list")
+			}
+		default:
+			slip.PanicType("&key", args[i], ":timeout", ":content-type")
+		}
+	}
+	if len(subjects) == 0 {
+		subjects = []string{name}
+	}
 	return
 }

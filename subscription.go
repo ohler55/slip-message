@@ -11,7 +11,7 @@ import (
 
 type subscription struct {
 	hub         *flavors.Instance
-	subject     string
+	subject     []string
 	contentType slip.Object
 	callback    slip.Caller
 	name        string

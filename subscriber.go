@@ -3,6 +3,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/ohler55/slip"
 	"github.com/ohler55/slip/pkg/cl"
 	"github.com/ohler55/slip/pkg/flavors"
@@ -56,7 +58,7 @@ type subscriberSubjectCaller struct{}
 
 func (caller subscriberSubjectCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	return slip.String(self.Any.(*subscription).subject)
+	return slip.String(strings.Join(self.Any.(*subscription).subject, "."))
 }
 
 func (caller subscriberSubjectCaller) Docs() string {
@@ -187,7 +189,9 @@ Get the next message on a queue and return the message and message identifier.
 `
 }
 
-func makeSubscriber(hub *flavors.Instance, subject, cb, ct, name slip.Object) (self *flavors.Instance, sub *subscription) {
+func makeSubscriber(hub *flavors.Instance, subject, cb, ct, name slip.Object) (
+	self *flavors.Instance, sub *subscription, subjStr string) {
+
 	self = subscriberFlavor.MakeInstance().(*flavors.Instance)
 	sub = &subscription{self: self, hub: hub}
 	sub.setContentType(ct)
@@ -195,7 +199,8 @@ func makeSubscriber(hub *flavors.Instance, subject, cb, ct, name slip.Object) (s
 		sub.callback = cl.ResolveToCaller(&self.Scope, cb, 0)
 	}
 	if ss, ok := subject.(slip.String); ok {
-		sub.subject = string(ss)
+		subjStr = string(ss)
+		sub.subject = strings.Split(string(ss), ".")
 	} else {
 		slip.PanicType(":subject", subject, "string")
 	}

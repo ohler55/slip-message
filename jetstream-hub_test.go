@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nats-io/nats.go"
 	"github.com/ohler55/ojg/tt"
 	"github.com/ohler55/slip"
 	"github.com/ohler55/slip/pkg/gi"
@@ -186,13 +187,25 @@ func TestJetstreamHubRequest(t *testing.T) {
 }
 
 func TestJetstreamHubAddQueue(t *testing.T) {
+	nc, err := nats.Connect(jetstreamURL)
+	tt.Nil(t, err)
+	js, err := nc.JetStream()
+	tt.Nil(t, err)
+
+	_ = js.DeleteStream("q2")
+
 	scope := slip.NewScope()
 	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
 	scope.Let("jhub", hub)
 	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
 	(&sliptest.Function{
 		Scope:  scope,
-		Source: `(send jhub :add-queue "q2" :work '("name1" "name2"))`,
+		Source: `(send jhub :add-queue "q2" :work '("name1"))`,
 		Expect: "nil",
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :queues)`,
+		Expect: `((name . "q2") (retention . :work) (queued . 0) (consumers "name1"))`,
 	}).Test(t)
 }
