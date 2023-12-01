@@ -27,17 +27,17 @@ func TestJetstreamHubSubscribe(t *testing.T) {
 	}).Test(t)
 	(&sliptest.Function{
 		Scope:  scope,
-		Source: `(send jhub :subscribe "top.middle.bottom" nil)`,
+		Source: `(send jhub :subscribe "top.middle.bottom" (lambda (m) nil))`,
 		Expect: "/^#<subscriber-flavor [0-9a-f]+>$/",
 	}).Test(t)
 	(&sliptest.Function{
 		Scope:  scope,
-		Source: `(send jhub :subscribe "top.*.bottom" nil)`,
+		Source: `(send jhub :subscribe "top.*.bottom" (lambda (m) nil))`,
 		Expect: "/^#<subscriber-flavor [0-9a-f]+>$/",
 	}).Test(t)
 	(&sliptest.Function{
 		Scope:  scope,
-		Source: `(send jhub :subscribe "top.>" nil)`,
+		Source: `(send jhub :subscribe "top.>" (lambda (m) nil))`,
 		Expect: "/^#<subscriber-flavor [0-9a-f]+>$/",
 	}).Test(t)
 
