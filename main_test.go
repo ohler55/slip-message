@@ -55,8 +55,10 @@ func startJetStreamServer() (jss *server.Server, ju string) {
 			// NoAuthUser:  "foo",
 			// AllowNonTLS:           true,
 			JetStream: true,
+			StoreDir:  "nats-store",
 		}
 	)
+	_ = os.RemoveAll(options.StoreDir) // start with a clean slate
 	if jss, err = server.NewServer(&options); err != nil {
 		panic(err)
 	}

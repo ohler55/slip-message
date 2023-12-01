@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/ohler55/ojg/tt"
@@ -186,13 +187,17 @@ func TestJetstreamHubRequest(t *testing.T) {
 	}).Test(t)
 }
 
-func TestJetstreamHubAddQueue(t *testing.T) {
+func deleteJetstreamStream(t *testing.T, name string) {
 	nc, err := nats.Connect(jetstreamURL)
 	tt.Nil(t, err)
-	js, err := nc.JetStream()
-	tt.Nil(t, err)
+	js, err2 := nc.JetStream()
+	tt.Nil(t, err2)
+	_ = js.DeleteStream(name)
+	nc.Close()
+}
 
-	_ = js.DeleteStream("q2")
+func TestJetstreamHubAddQueue(t *testing.T) {
+	deleteJetstreamStream(t, "q2")
 
 	scope := slip.NewScope()
 	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
@@ -208,4 +213,48 @@ func TestJetstreamHubAddQueue(t *testing.T) {
 		Source: `(assoc '(name . "q2") (send jhub :queues))`,
 		Expect: `((name . "q2") (retention . :work) (queued . 0) (consumers "name1") (subjects "q2"))`,
 	}).Test(t)
+}
+
+func TestJetstreamHubWorkQueue(t *testing.T) {
+	deleteJetstreamStream(t, "q2")
+	scope := slip.NewScope()
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	scope.Let("jhub", hub)
+	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(`(send jhub :add-queue "q2" :work '("name1")
+                               :max-messages 3
+                               :subjects '("test.q2"))`).Eval(scope, nil)
+	_ = slip.ReadString(`(send jhub :publish "test.q2" "first message")`).Eval(scope, nil)
+	_ = slip.ReadString(`(defun condense-jqueue (q)
+                          (list
+                           (cdr (assoc 'name q))
+                           (cdr (assoc 'queued q))))`).Eval(scope, nil)
+
+	sub := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name1")`).Eval(scope, nil)
+	scope.Let("sub", sub)
+
+	checkCode := `(cdr (assoc 'queued (assoc '(name . "q2") (send jhub :queues))))`
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :next sub)`,
+		Expect: `"first message"`,
+	}).Test(t)
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(0), time.Second*2))
+
+	_ = slip.ReadString(`(send jhub :publish "test.q2" "second message")`).Eval(scope, nil)
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
+}
+
+func waitForCond(s *slip.Scope, code string, target slip.Object, timeout time.Duration) bool {
+	start := time.Now()
+	for time.Since(start) < timeout {
+		value := slip.ReadString(code).Eval(s, nil)
+		if value == target {
+			return true
+		}
+		time.Sleep(timeout / 40)
+	}
+	return false
 }

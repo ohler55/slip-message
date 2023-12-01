@@ -243,6 +243,30 @@ func getAddQueueArgs(s *slip.Scope, args slip.List) (
 	return
 }
 
+func getNextArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *subscription, timeout time.Duration) {
+	if len(args) < 1 || 3 < len(args) {
+		slip.NewPanic("Incorrect argument count. Expected 1 or 3 but got %d.", len(args))
+	}
+	self = s.Get("self").(*flavors.Instance)
+	inst, ok := args[0].(*flavors.Instance)
+	if !ok || inst.Flavor != subscriberFlavor {
+		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
+	}
+	sub = inst.Any.(*subscription)
+	for i := 1; i < len(args); i += 2 {
+		if args[i] == slip.Symbol(":timeout") {
+			if rn, ok := args[i+1].(slip.Real); ok {
+				timeout = time.Duration(rn.RealValue() * float64(time.Second))
+			} else {
+				slip.PanicType("timeout", args[i+1], "real")
+			}
+		} else {
+			slip.PanicType("&key", args[i], ":timeout")
+		}
+	}
+	return
+}
+
 func callMsgCallback(s *slip.Scope, m *nats.Msg, jsub *jsSub) (result slip.Object) {
 	defer func() {
 		switch rec := recover().(type) {
@@ -253,12 +277,10 @@ func callMsgCallback(s *slip.Scope, m *nats.Msg, jsub *jsSub) (result slip.Objec
 		}
 	}()
 	msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
-	if jsub.sub.callback != nil {
-		reply := jsub.sub.callback.Call(s, slip.List{msg}, 0)
-		if 0 < len(m.Reply) {
-			if err := m.Respond([]byte(encodeMsg(reply, false).(slip.String))); err != nil {
-				panic(err)
-			}
+	reply := jsub.sub.callback.Call(s, slip.List{msg}, 0)
+	if 0 < len(m.Reply) {
+		if err := m.Respond([]byte(encodeMsg(reply, false).(slip.String))); err != nil {
+			panic(err)
 		}
 	}
 	return

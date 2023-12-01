@@ -352,28 +352,8 @@ func (caller appHubCloseQueueCaller) Docs() string {
 type appHubNextCaller struct{}
 
 func (caller appHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	if len(args) < 1 || 3 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 1 or 3 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+	self, sub, timeout := getNextArgs(s, args)
 	ah := self.Any.(*appHub)
-	inst, ok := args[0].(*flavors.Instance)
-	if !ok || inst.Flavor != subscriberFlavor {
-		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
-	}
-	sub := inst.Any.(*subscription)
-	var timeout time.Duration
-	for i := 1; i < len(args); i += 2 {
-		if args[i] == slip.Symbol(":timeout") {
-			if rn, ok := args[i+1].(slip.Real); ok {
-				timeout = time.Duration(rn.RealValue() * float64(time.Second))
-			} else {
-				slip.PanicType("timeout", args[i+1], "real")
-			}
-		} else {
-			slip.PanicType("&key", args[i], ":timeout")
-		}
-	}
 	var found queue
 	ah.mu.Lock()
 	for _, q := range ah.queues {

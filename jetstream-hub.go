@@ -141,11 +141,20 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 	jh := self.Any.(*jsHub)
 	jh.mu.Lock()
 	jh.subs = append(jh.subs, &jsub)
-	jsub.nsub, err = jh.nc.Subscribe(subject, func(m *nats.Msg) {
-		if serr := callMsgCallback(s, m, &jsub); serr != nil && jh.errCb != nil {
-			_ = safeCall(s, jh.errCb, slip.List{serr})
-		}
-	})
+	if jsub.sub.callback == nil {
+		// TBD could use queue name as nats.BindStream() option instead
+		// jsub.nsub, err = jh.js.PullSubscribe(subject, "",
+		jsub.nsub, err = jh.js.PullSubscribe(subject, jsub.sub.name,
+			// nats.BindStream("q2"),
+			nats.AckExplicit(),
+			nats.ConsumerName(jsub.sub.name))
+	} else {
+		jsub.nsub, err = jh.nc.Subscribe(subject, func(m *nats.Msg) {
+			if serr := callMsgCallback(s, m, &jsub); serr != nil && jh.errCb != nil {
+				_ = safeCall(s, jh.errCb, slip.List{serr})
+			}
+		})
+	}
 	jh.mu.Unlock()
 	if err != nil {
 		panic(err)
@@ -309,7 +318,9 @@ func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ i
 		panic(err)
 	}
 	for _, cn := range consumers {
-		_, err := jh.js.AddConsumer(name, &nats.ConsumerConfig{Name: cn, AckPolicy: nats.AckExplicitPolicy})
+		_, err := jh.js.AddConsumer(name,
+			&nats.ConsumerConfig{Durable: cn, Name: cn, AckPolicy: nats.AckExplicitPolicy},
+		)
 		if err != nil {
 			panic(err)
 		}
@@ -386,15 +397,26 @@ func (caller jetstreamHubCloseQueueCaller) Docs() string {
 type jetstreamHubNextCaller struct{}
 
 func (caller jetstreamHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	if len(args) < 1 || 3 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 1 or 3 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+	self, sub, timeout := getNextArgs(s, args)
 	jh := self.Any.(*jsHub)
 
-	// TBD
-	fmt.Printf("*** js: %v\n", jh)
-
+	var jsub *jsSub
+	jh.mu.Lock()
+	for _, sb := range jh.subs {
+		if sub == sb.sub {
+			jsub = sb
+			break
+		}
+	}
+	jh.mu.Unlock()
+	ma, err := jsub.nsub.Fetch(1, nats.MaxWait(timeout))
+	if err != nil {
+		panic(err)
+	}
+	if 0 < len(ma) {
+		_ = ma[0].Ack()
+		return decodeMessage(slip.String(ma[0].Data), jsub.sub.contentType)
+	}
 	return nil
 }
 
