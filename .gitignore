@@ -4,3 +4,4 @@
 *.dylib
 
 *.out
+nats-store

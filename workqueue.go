@@ -3,6 +3,7 @@
 package main
 
 import (
+	"strings"
 	"time"
 
 	"github.com/ohler55/slip"
@@ -14,17 +15,28 @@ type workQueue struct {
 	consumers []string
 }
 
-func newWorkQueue(name string, maxMsgs int, consumers []string) queue {
+func newWorkQueue(name string, maxMsgs int, consumers, subjects []string) queue {
 	if maxMsgs < 1 {
 		maxMsgs = defaultMaxMsgs
 	}
+	filters := make([][]string, len(subjects))
+	for i, sub := range subjects {
+		filters[i] = strings.Split(sub, ".")
+	}
 	return &workQueue{
+		baseQueue: baseQueue{
+			subjects: filters,
+		},
 		stack: stack{
 			name: name,
 			new:  make(chan string, maxMsgs),
 		},
 		consumers: consumers,
 	}
+}
+
+func (q *workQueue) qname() string {
+	return q.name
 }
 
 func (q *workQueue) appendAssoc(list slip.List) slip.List {
@@ -40,6 +52,7 @@ func (q *workQueue) appendAssoc(list slip.List) slip.List {
 		consumers[i+1] = slip.String(c)
 	}
 	list = append(list, consumers)
+	list = append(list, q.subjectList())
 	q.mu.Unlock()
 
 	return list
