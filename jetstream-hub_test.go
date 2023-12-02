@@ -326,18 +326,36 @@ func TestJetstreamHubAllQueue(t *testing.T) {
 	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
 	_ = slip.ReadString(`(send jhub :add-queue "q2" :all '("name1" "name2")
                                :subjects '("test.q2"))`).Eval(scope, nil)
-
-	// TBD subscribe
+	sub1 := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name1")`).Eval(scope, nil)
+	scope.Let("sub1", sub1)
+	sub2 := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name2")`).Eval(scope, nil)
+	scope.Let("sub2", sub2)
 
 	_ = slip.ReadString(`(send jhub :publish "test.q2" "first message")`).Eval(scope, nil)
+	checkCode := `(cdr (assoc 'queued (assoc '(name . "q2") (send jhub :queues))))`
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
 
-	// TBD next for each sub
+	// Get next for both subscribers. If the queue was a work queue then the
+	// second would fail with a timeout. If both succeed and the queued count
+	// is ero then all is working as designed.
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :ack sub1 (nth-value 1 (send sub1 :next)))`,
+		Expect: "nil",
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :ack sub2 (nth-value 1 (send sub2 :next)))`,
+		Expect: "nil",
+	}).Test(t)
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(0), time.Second*2))
 }
 
 func waitForCond(s *slip.Scope, code string, target slip.Object, timeout time.Duration) bool {
 	start := time.Now()
 	for time.Since(start) < timeout {
 		value := slip.ReadString(code).Eval(s, nil)
+		// fmt.Printf("*** check %s\n", value)
 		if value == target {
 			return true
 		}
