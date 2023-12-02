@@ -15,7 +15,7 @@ import (
 
 const (
 	subscribeDocs = `__:subscribe__ _subject_ _callback_ &key _content-type_ _name_ => _instance_
-   _subject_ to listen on.
+   _subject_ to listen on or queue to be a consumer of.
    _callback_ can be either _nil_ when the _:next_ method will be called on a queue or
 a function to call when a message is received.
    _:content-type_ is an optional argument of the expected content type which can be one of
@@ -267,11 +267,31 @@ func getNextArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *su
 	return
 }
 
+func getAckArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *subscription, msgID int64) {
+	if len(args) < 2 {
+		slip.NewPanic("Incorrect argument count. Expected 2 but got %d.", len(args))
+	}
+	self = s.Get("self").(*flavors.Instance)
+	inst, ok := args[0].(*flavors.Instance)
+	if !ok || inst.Flavor != subscriberFlavor {
+		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
+	}
+	sub = inst.Any.(*subscription)
+	if num, ok2 := args[1].(slip.Fixnum); ok2 {
+		msgID = int64(num)
+	} else {
+		slip.PanicType("message-id", args[1], "fixnum")
+	}
+	return
+}
+
 func callMsgCallback(s *slip.Scope, m *nats.Msg, jsub *jsSub) (result slip.Object) {
 	defer func() {
 		switch rec := recover().(type) {
-		case nil, slip.Object:
+		case nil:
 			// leave as is
+		case slip.Object:
+			result = rec
 		default:
 			result = slip.NewError("%s", rec)
 		}
@@ -296,4 +316,10 @@ func safeCall(s *slip.Scope, caller slip.Caller, args slip.List) (result slip.Ob
 		}
 	}()
 	return caller.Call(s, args, 0)
+}
+
+func checkError(where string, err error) {
+	if err != nil {
+		slip.NewPanic("%s: %s", where, err)
+	}
 }

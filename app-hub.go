@@ -378,22 +378,9 @@ func (caller appHubNextCaller) Docs() string {
 type appHubAckCaller struct{}
 
 func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	if len(args) < 2 {
-		slip.NewPanic("Incorrect argument count. Expected 2 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+	self, sub, mid := getAckArgs(s, args)
 	ah := self.Any.(*appHub)
-	inst, ok := args[0].(*flavors.Instance)
-	if !ok || inst.Flavor != subscriberFlavor {
-		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
-	}
-	sub := inst.Any.(*subscription)
-	var mid int64
-	if num, ok2 := args[1].(slip.Fixnum); ok2 {
-		mid = int64(num)
-	} else {
-		slip.PanicType("message-id", args[1], "fixnum")
-	}
+
 	var found queue
 	ah.mu.Lock()
 	for _, q := range ah.queues {

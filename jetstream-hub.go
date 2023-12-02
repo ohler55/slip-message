@@ -3,12 +3,13 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/ohler55/slip"
+	"github.com/ohler55/slip/pkg/cl"
 	"github.com/ohler55/slip/pkg/flavors"
 )
 
@@ -21,11 +22,13 @@ var (
 )
 
 type jsHub struct {
-	js    nats.JetStreamContext
-	nc    *nats.Conn
-	subs  []*jsSub
-	mu    sync.Mutex // for subs list
-	errCb slip.Caller
+	js      nats.JetStreamContext
+	nc      *nats.Conn
+	subs    []*jsSub
+	mu      sync.Mutex // for subs list
+	errCb   slip.Caller
+	lastID  int64
+	pending map[int64]*nats.Msg
 }
 
 func init() {
@@ -59,7 +62,20 @@ func init() {
 	jetstreamHubFlavor.DefMethod(":queues", "", jetstreamHubQueuesCaller{})
 	jetstreamHubFlavor.DefMethod(":next", "", jetstreamHubNextCaller{})
 	jetstreamHubFlavor.DefMethod(":ack", "", jetstreamHubAckCaller{})
-	// TBD :error-handler
+	jetstreamHubFlavor.DefMethod(":set-error-handler", "", jetstreamHubSetErrorHandlerCaller{})
+}
+
+func (jh *jsHub) addMsgPending(m *nats.Msg) int64 {
+	id := time.Now().UnixNano()
+	jh.mu.Lock()
+	if id <= jh.lastID {
+		id = jh.lastID + 1
+	}
+	jh.lastID = id
+	jh.pending[id] = m
+	jh.mu.Unlock()
+
+	return id
 }
 
 type jetstreamHubInitCaller struct{}
@@ -99,16 +115,14 @@ func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	if 0 < len(tlsCert) || 0 < len(tlsKey) {
 		options = append(options, nats.ClientCert(tlsCert, tlsKey))
 	}
-	var (
-		jh  jsHub
-		err error
-	)
-	if jh.nc, err = nats.Connect(nu, options...); err != nil {
-		panic(err)
-	}
-	if jh.js, err = jh.nc.JetStream(); err != nil {
-		panic(err)
-	}
+	jh := jsHub{pending: map[int64]*nats.Msg{}}
+	var err error
+	jh.nc, err = nats.Connect(nu, options...)
+	checkError("nats.Connect", err)
+
+	jh.js, err = jh.nc.JetStream()
+	checkError("nats.Conn.JetStream", err)
+
 	self.Any = &jh
 
 	return nil
@@ -142,12 +156,13 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 	jh.mu.Lock()
 	jh.subs = append(jh.subs, &jsub)
 	if jsub.sub.callback == nil {
-		// TBD could use queue name as nats.BindStream() option instead
-		// jsub.nsub, err = jh.js.PullSubscribe(subject, "",
-		jsub.nsub, err = jh.js.PullSubscribe(subject, jsub.sub.name,
-			// nats.BindStream("q2"),
-			nats.AckExplicit(),
-			nats.ConsumerName(jsub.sub.name))
+		var opts []nats.SubOpt
+		opts = append(opts, nats.AckExplicit())
+		opts = append(opts, nats.ConsumerName(jsub.sub.name))
+		if si, err := jh.js.StreamInfo(subject); err != nil && si != nil {
+			opts = append(opts, nats.BindStream(si.Config.Name))
+		}
+		jsub.nsub, err = jh.js.PullSubscribe(subject, jsub.sub.name, opts...)
 	} else {
 		jsub.nsub, err = jh.nc.Subscribe(subject, func(m *nats.Msg) {
 			if serr := callMsgCallback(s, m, &jsub); serr != nil && jh.errCb != nil {
@@ -156,9 +171,8 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 		})
 	}
 	jh.mu.Unlock()
-	if err != nil {
-		panic(err)
-	}
+	checkError("jetstream hub :subscribe", err)
+
 	return
 }
 
@@ -257,9 +271,9 @@ func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, _ in
 		slip.PanicType("subject", args[0], "string")
 	}
 	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
-	if err := jh.nc.Publish(subject, []byte(msg.(slip.String))); err != nil {
-		panic(err)
-	}
+	err := jh.nc.Publish(subject, []byte(msg.(slip.String)))
+	checkError("jetstream hub :publish", err)
+
 	return nil
 }
 
@@ -274,9 +288,8 @@ func (caller jetstreamHubRequestCaller) Call(s *slip.Scope, args slip.List, _ in
 	jh := self.Any.(*jsHub)
 
 	m, err := jh.nc.Request(subject, []byte(msg.(slip.String)), timeout)
-	if err != nil {
-		panic(err)
-	}
+	checkError("jetstream hub :request", err)
+
 	return decodeMessage(slip.String(m.Data), nil)
 }
 
@@ -314,16 +327,14 @@ func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ i
 	if 0 < maxMsgs {
 		cfg.MaxMsgs = int64(maxMsgs)
 	}
-	if _, err := jh.js.AddStream(&cfg); err != nil {
-		panic(err)
-	}
+	_, err := jh.js.AddStream(&cfg)
+	checkError("jetstream hub :add-queue", err)
+
 	for _, cn := range consumers {
 		_, err := jh.js.AddConsumer(name,
 			&nats.ConsumerConfig{Durable: cn, Name: cn, AckPolicy: nats.AckExplicitPolicy},
 		)
-		if err != nil {
-			panic(err)
-		}
+		checkError("jetstream hub :add-queue consumer", err)
 	}
 	return nil
 }
@@ -383,10 +394,11 @@ type jetstreamHubCloseQueueCaller struct{}
 func (caller jetstreamHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)
-
-	// TBD
-	fmt.Printf("*** js: %v\n", jh)
-
+	if ss, ok := args[0].(slip.String); ok {
+		_ = jh.js.DeleteStream(string(ss))
+	} else {
+		slip.PanicType("name", args[0], "string")
+	}
 	return nil
 }
 
@@ -410,12 +422,11 @@ func (caller jetstreamHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	}
 	jh.mu.Unlock()
 	ma, err := jsub.nsub.Fetch(1, nats.MaxWait(timeout))
-	if err != nil {
-		panic(err)
-	}
+	checkError("jetstream hub :next", err)
+
 	if 0 < len(ma) {
-		_ = ma[0].Ack()
-		return decodeMessage(slip.String(ma[0].Data), jsub.sub.contentType)
+		mid := jh.addMsgPending(ma[0])
+		return slip.Values{decodeMessage(slip.String(ma[0].Data), jsub.sub.contentType), slip.Fixnum(mid)}
 	}
 	return nil
 }
@@ -427,18 +438,43 @@ func (caller jetstreamHubNextCaller) Docs() string {
 type jetstreamHubAckCaller struct{}
 
 func (caller jetstreamHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	if len(args) < 2 {
-		slip.NewPanic("Incorrect argument count. Expected 2 but got %d.", len(args))
-	}
-	self := s.Get("self").(*flavors.Instance)
+	self, _, mid := getAckArgs(s, args)
 	jh := self.Any.(*jsHub)
-
-	// TBD
-	fmt.Printf("*** js: %v\n", jh)
-
+	jh.mu.Lock()
+	m, has := jh.pending[mid]
+	if has {
+		delete(jh.pending, mid)
+	}
+	jh.mu.Unlock()
+	if m != nil {
+		err := m.Ack()
+		checkError("jetstream hub :ack", err)
+	}
 	return nil
 }
 
 func (caller jetstreamHubAckCaller) Docs() string {
 	return ackDocs
+}
+
+type jetstreamHubSetErrorHandlerCaller struct{}
+
+func (caller jetstreamHubSetErrorHandlerCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+	if len(args) != 1 {
+		slip.NewPanic("Incorrect argument count. Expected 1 but got %d.", len(args))
+	}
+	self := s.Get("self").(*flavors.Instance)
+	jh := self.Any.(*jsHub)
+	jh.errCb = cl.ResolveToCaller(s, args[0], 0)
+
+	return nil
+}
+
+func (caller jetstreamHubSetErrorHandlerCaller) Docs() string {
+	return `__:set-error-handler__ _handler__ => _nil_
+   _handler_ is the function to call when an out of band error occurrs.
+
+
+Sets the error handler for message processing errors.
+`
 }

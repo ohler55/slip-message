@@ -28,13 +28,14 @@ func (q *baseQueue) nextID() (id int64) {
 	return
 }
 
-func (q *baseQueue) subjectMatch(subject []string) bool {
+func (q *baseQueue) subjectMatch(subject []string) (result bool) {
 	for _, filter := range q.subjects {
 		if subjectMatch(subject, filter) {
-			return true
+			result = true
+			break
 		}
 	}
-	return false
+	return
 }
 
 func (q *baseQueue) subjectList() (list slip.List) {

@@ -603,4 +603,10 @@ func TestAppHubAllQueue(t *testing.T) {
 	tf.Test(t)
 	queue = slip.ReadString(`(condense-all-queue (car (send hub :queues)))`).Eval(scope, nil)
 	tt.Equal(t, `(("name1" 0 1 1) ("name2" 1 1 0))`, slip.ObjectString(queue))
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send hub :close-queue "q2")`,
+		Expect: "nil",
+	}).Test(t)
 }

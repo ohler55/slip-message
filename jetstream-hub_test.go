@@ -134,6 +134,7 @@ func TestJetstreamHubDocs(t *testing.T) {
 		":queues",
 		":next",
 		":ack",
+		":set-error-handler",
 	} {
 		_ = slip.ReadString(fmt.Sprintf(`(describe-method jetstream-hub-flavor %s out)`, method)).Eval(scope, nil)
 		tt.Equal(t, true, strings.Contains(out.String(), method))
@@ -170,6 +171,25 @@ func TestJetstreamHubPublish(t *testing.T) {
 		Scope:     scope,
 		Source:    `(send jhub :publish t "nothing")`,
 		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+}
+
+func TestJetstreamHubErrorHandler(t *testing.T) {
+	scope := slip.NewScope()
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	scope.Let("jhub", hub)
+	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	sub := slip.ReadString(`(send jhub :subscribe "boo.boo" (lambda (m) (panic "broke it")))`).Eval(scope, nil)
+	scope.Let("sub", sub)
+	scope.Let("error-count", slip.Fixnum(0))
+	_ = slip.ReadString(
+		`(send jhub :set-error-handler (lambda (err) (setq error-count (1+ error-count))))`).Eval(scope, nil)
+	_ = slip.ReadString(`(send jhub :publish "boo.boo" "A message.")`).Eval(scope, nil)
+	tt.Equal(t, true, waitForCond(scope, "error-count", slip.Fixnum(1), time.Second*2))
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send jhub :set-error-handler)`,
+		PanicType: slip.Symbol("error"),
 	}).Test(t)
 }
 
@@ -213,6 +233,32 @@ func TestJetstreamHubAddQueue(t *testing.T) {
 		Source: `(assoc '(name . "q2") (send jhub :queues))`,
 		Expect: `((name . "q2") (retention . :work) (queued . 0) (consumers "name1") (subjects "q2"))`,
 	}).Test(t)
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :close-queue "q2")`,
+		Expect: "nil",
+	}).Test(t)
+
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send jhub :add-queue "q0" :all '("x") :max-messages t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send jhub :add-queue "q0" :all '("x") :subjects t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send jhub :add-queue "q0" :all '("x") :subjects '(t))`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
+	(&sliptest.Function{
+		Scope:     scope,
+		Source:    `(send jhub :close-queue t)`,
+		PanicType: slip.Symbol("type-error"),
+	}).Test(t)
 }
 
 func TestJetstreamHubWorkQueue(t *testing.T) {
@@ -236,15 +282,56 @@ func TestJetstreamHubWorkQueue(t *testing.T) {
 	checkCode := `(cdr (assoc 'queued (assoc '(name . "q2") (send jhub :queues))))`
 	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
 
-	(&sliptest.Function{
+	tf := sliptest.Function{
 		Scope:  scope,
 		Source: `(send jhub :next sub)`,
-		Expect: `"first message"`,
-	}).Test(t)
-	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(0), time.Second*2))
+		Expect: `/"first message", [0-9]+/`,
+	}
+	tf.Test(t)
+	scope.Let("mv", tf.Result.(slip.Values)[1])
+	// Before ack
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
 
 	_ = slip.ReadString(`(send jhub :publish "test.q2" "second message")`).Eval(scope, nil)
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(2), time.Second*2))
+
+	tf = sliptest.Function{
+		Scope:  scope,
+		Source: `(send sub :next 0.2)`,
+		Expect: `/"second message", [0-9]+/`,
+	}
+	tf.Test(t)
+	scope.Let("mv2", tf.Result.(slip.Values)[1])
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :ack sub mv)`,
+		Expect: "nil",
+	}).Test(t)
 	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
+
+	(&sliptest.Function{
+		Scope:  scope,
+		Source: `(send jhub :ack sub mv2)`,
+		Expect: "nil",
+	}).Test(t)
+	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(0), time.Second*2))
+}
+
+func TestJetstreamHubAllQueue(t *testing.T) {
+	deleteJetstreamStream(t, "q2")
+	scope := slip.NewScope()
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	scope.Let("jhub", hub)
+	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(`(send jhub :add-queue "q2" :all '("name1" "name2")
+                               :subjects '("test.q2"))`).Eval(scope, nil)
+
+	// TBD subscribe
+
+	_ = slip.ReadString(`(send jhub :publish "test.q2" "first message")`).Eval(scope, nil)
+
+	// TBD next for each sub
 }
 
 func waitForCond(s *slip.Scope, code string, target slip.Object, timeout time.Duration) bool {
