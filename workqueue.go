@@ -62,22 +62,31 @@ func (q *workQueue) push(msg slip.Object) {
 	q.new <- string(msg.(slip.String))
 }
 
+func (q *workQueue) nextMsg(smsg string, contentType slip.Object) (msg slip.Object, msgID int64) {
+	msg = decodeMessage(slip.String(smsg), contentType)
+	q.mu.Lock()
+	q.lastID++
+	msgID = q.nextID()
+	q.pending = append(q.pending, msgID)
+	q.mu.Unlock()
+
+	return
+}
+
 func (q *workQueue) next(
 	consumer string,
 	contentType slip.Object,
 	timeout time.Duration) (msg slip.Object, msgID int64) {
 
+	if 0 < len(q.new) {
+		return q.nextMsg(<-q.new, contentType)
+	}
 	if timeout <= 0 {
 		timeout = time.Nanosecond
 	}
 	select {
 	case smsg := <-q.new:
-		msg = decodeMessage(slip.String(smsg), contentType)
-		q.mu.Lock()
-		q.lastID++
-		msgID = q.nextID()
-		q.pending = append(q.pending, msgID)
-		q.mu.Unlock()
+		return q.nextMsg(smsg, contentType)
 	case <-time.After(timeout):
 		// leave msg as nil and id as 0
 	}

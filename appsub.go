@@ -10,6 +10,7 @@ import (
 type appSub struct {
 	sub   *subscription
 	queue chan slip.Object
+	done  chan struct{}
 }
 
 func (as *appSub) loop(s *slip.Scope) {
@@ -30,6 +31,7 @@ func (as *appSub) loop(s *slip.Scope) {
 			}
 		}
 	}
+	as.done <- struct{}{}
 }
 
 func (as *appSub) reply(msg slip.Object, replies gi.Channel) {
@@ -39,4 +41,9 @@ func (as *appSub) reply(msg slip.Object, replies gi.Channel) {
 		}
 	}()
 	replies <- msg
+}
+
+func (as *appSub) shutdown() {
+	as.queue <- nil
+	<-as.done
 }

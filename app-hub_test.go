@@ -284,6 +284,8 @@ func TestAppHubRequest(t *testing.T) {
 	}).Test(t)
 }
 
+// This test verifies that timeouts work. This creates a race conditions
+// between the reply and the timeout and will fail if -race is specified.
 func TestAppHubRequestTimeout(t *testing.T) {
 	scope := slip.NewScope()
 	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
@@ -294,12 +296,14 @@ func TestAppHubRequestTimeout(t *testing.T) {
 	(&sliptest.Function{
 		Scope: scope,
 		Source: `(send hub :request "requests"
-                                       (make-instance 'bag-flavor :parse "{}")
-                                       :timeout 0.01 :content-type :sen)`,
+                                    (make-instance 'bag-flavor :parse "{}")
+                                    :timeout 0.01 :content-type :sen)`,
 		PanicType: slip.Symbol("error"),
 	}).Test(t)
 }
 
+// This test verifies that race conditions are handled correctly in that only
+// one reply is sent. It will fail if -race is specified.
 func TestAppHubRequestMultiReply(t *testing.T) {
 	scope := slip.NewScope()
 	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
@@ -447,17 +451,18 @@ func TestAppHubCloseQueuePanics(t *testing.T) {
 
 func TestAppHubWorkQueue(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
-	scope.Let("hub", hub)
-	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
-	_ = slip.ReadString(`(send hub :add-queue "q2" :work '("name1" "name2") :max-messages 3)`).Eval(scope, nil)
-	_ = slip.ReadString(`(send hub :publish "q2" "first message")`).Eval(scope, nil)
 	_ = slip.ReadString(`(defun condense-queue (q)
                           (list
                            (cdr (assoc 'name q))
                            (cdr (assoc 'queued q))
                            (cdr (assoc 'pending q))
                            (cdr (assoc 'acked q))))`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(`(send hub :add-queue "q2" :work '("name1" "name2") :max-messages 3)`).Eval(scope, nil)
+	_ = slip.ReadString(`(send hub :publish "q2" "first message")`).Eval(scope, nil)
+	waitForCond(scope, "(nth 1 (condense-queue (car (send hub :queues))))", slip.Fixnum(1), time.Second)
 
 	sub := slip.ReadString(`(send hub :subscribe "q2" nil :name "name1")`).Eval(scope, nil)
 	scope.Let("sub", sub)
@@ -475,6 +480,8 @@ func TestAppHubWorkQueue(t *testing.T) {
 		Expect: "nil",
 	}).Test(t)
 	_ = slip.ReadString(`(send hub :publish "q2" "second message")`).Eval(scope, nil)
+	waitForCond(scope, "(nth 1 (condense-queue (car (send hub :queues))))", slip.Fixnum(1), time.Second)
+
 	queue := slip.ReadString(`(condense-queue (car (send hub :queues)))`).Eval(scope, nil)
 	tt.Equal(t, `("q2" 1 1 0)`, slip.ObjectString(queue))
 
@@ -549,11 +556,6 @@ func TestAppHubWorkQueue(t *testing.T) {
 
 func TestAppHubAllQueue(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
-	scope.Let("hub", hub)
-	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
-	_ = slip.ReadString(`(send hub :add-queue "q2" :all '("name1" "name2") :max-messages 3)`).Eval(scope, nil)
-	_ = slip.ReadString(`(send hub :publish "q2" "first message")`).Eval(scope, nil)
 	_ = slip.ReadString(`(defun condense-all-queue (q)
                           (mapcar (lambda (stack)
                            (list
@@ -562,11 +564,17 @@ func TestAppHubAllQueue(t *testing.T) {
                             (cdr (assoc 'pending stack))
                             (cdr (assoc 'acked stack))))
                            (cdr (assoc 'consumers q))))`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	scope.Let("hub", hub)
+	defer func() { _ = slip.ReadString(`(send hub :close)`).Eval(scope, nil) }()
+	_ = slip.ReadString(`(send hub :add-queue "q2" :all '("name1" "name2") :max-messages 3)`).Eval(scope, nil)
+	_ = slip.ReadString(`(send hub :publish "q2" "first message")`).Eval(scope, nil)
 
 	sub1 := slip.ReadString(`(send hub :subscribe "q2" nil :name "name1")`).Eval(scope, nil)
 	scope.Let("sub1", sub1)
 	sub2 := slip.ReadString(`(send hub :subscribe "q2" nil :name "name2")`).Eval(scope, nil)
 	scope.Let("sub2", sub2)
+	waitForCond(scope, "(nth 1 (car (condense-all-queue (car (send hub :queues)))))", slip.Fixnum(1), time.Second)
 
 	tf := sliptest.Function{
 		Scope:  scope,
@@ -576,6 +584,7 @@ func TestAppHubAllQueue(t *testing.T) {
 	tf.Test(t)
 	scope.Let("mv", tf.Result.(slip.Values)[1])
 	_ = slip.ReadString(`(send hub :publish "q2" "second message")`).Eval(scope, nil)
+	waitForCond(scope, "(nth 1 (nth 1 (condense-all-queue (car (send hub :queues)))))", slip.Fixnum(2), time.Second)
 
 	queue := slip.ReadString(`(condense-all-queue (car (send hub :queues)))`).Eval(scope, nil)
 	tt.Equal(t, `(("name1" 1 1 0) ("name2" 2 0 0))`, slip.ObjectString(queue))

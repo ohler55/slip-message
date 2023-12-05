@@ -95,7 +95,7 @@ func (caller appHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (
 
 	var sub *subscription
 	subscriber, sub, _ = subscriberFromArgs(self, args)
-	as := appSub{sub: sub, queue: make(gi.Channel, 32)}
+	as := appSub{sub: sub, queue: make(gi.Channel, 32), done: make(chan struct{}, 1)}
 	go as.loop(s)
 
 	ah := self.Any.(*appHub)
@@ -262,7 +262,7 @@ func (caller appHubCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.
 	ah := self.Any.(*appHub)
 	ah.mu.Lock()
 	for _, as := range ah.subs {
-		as.queue <- nil
+		as.shutdown()
 	}
 	for _, q := range ah.queues {
 		q.shutdown()

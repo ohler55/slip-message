@@ -13,13 +13,12 @@ var (
 		Nicknames: []string{"message", "msg"},
 		Doc:       "Home of symbols defined for the message (msg) functions, variables, and constants.",
 		Vars:      map[string]*slip.VarVal{},
-		Lambdas:   map[string]*slip.Lambda{},
-		Funcs:     map[string]*slip.FuncInfo{},
 		PreSet:    slip.DefaultPreSet,
 	}
 )
 
 func init() {
+	Pkg.Initialize()
 	slip.AddPackage(&Pkg)
 	slip.UserPkg.Use(&Pkg)
 	Pkg.Set("*message*", &Pkg)
