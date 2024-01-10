@@ -6,19 +6,16 @@ import (
 	"github.com/ohler55/slip"
 )
 
-var (
-	// Pkg is the message package.
-	Pkg = slip.Package{
-		Name:      "message",
-		Nicknames: []string{"message", "msg"},
-		Doc:       "Home of symbols defined for the message (msg) functions, variables, and constants.",
-		Vars:      map[string]*slip.VarVal{},
-		PreSet:    slip.DefaultPreSet,
-	}
-)
+// Pkg is the message package.
+var Pkg = slip.Package{
+	Name:      "message",
+	Nicknames: []string{"message", "msg"},
+	Doc:       "Home of symbols defined for the message (msg) functions, variables, and constants.",
+	PreSet:    slip.DefaultPreSet,
+}
 
 func init() {
-	Pkg.Initialize()
+	Pkg.Initialize(map[string]*slip.VarVal{})
 	slip.AddPackage(&Pkg)
 	slip.UserPkg.Use(&Pkg)
 	Pkg.Set("*message*", &Pkg)
