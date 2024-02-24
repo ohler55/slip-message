@@ -15,6 +15,7 @@ var (
 )
 
 func init() {
+	Pkg.Initialize(nil)
 	subscriberFlavor = flavors.DefFlavor("subscriber-flavor",
 		map[string]slip.Object{},
 		nil,
@@ -25,6 +26,7 @@ func init() {
 for message distributed by a message hub.`),
 			},
 		},
+		&Pkg,
 	)
 	subscriberFlavor.Final = true
 	subscriberFlavor.GoMakeOnly = true

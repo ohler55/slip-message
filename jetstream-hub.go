@@ -32,6 +32,7 @@ type jsHub struct {
 }
 
 func init() {
+	Pkg.Initialize(nil)
 	jetstreamHubFlavor = flavors.DefFlavor("jetstream-hub-flavor",
 		map[string]slip.Object{},
 		nil,
@@ -49,6 +50,7 @@ func init() {
 				slip.String(`A jetstream-hub is connection to a JetStream server.`),
 			},
 		},
+		&Pkg,
 	)
 	jetstreamHubFlavor.DefMethod(":init", "", jetstreamHubInitCaller{})
 	jetstreamHubFlavor.DefMethod(":subscribe", "", jetstreamHubSubscribeCaller{})

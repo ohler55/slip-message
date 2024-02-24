@@ -47,6 +47,7 @@ type appHub struct {
 }
 
 func init() {
+	Pkg.Initialize(nil)
 	appHubFlavor = flavors.DefFlavor("app-hub-flavor",
 		map[string]slip.Object{},
 		nil,
@@ -56,6 +57,7 @@ func init() {
 				slip.String(`A app-hub is an in-memory message distribution hub.`),
 			},
 		},
+		&Pkg,
 	)
 	appHubFlavor.DefMethod(":init", "", appHubInitCaller{})
 	appHubFlavor.DefMethod(":subscribe", "", appHubSubscribeCaller{})
