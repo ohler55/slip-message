@@ -11,6 +11,6 @@ build:
 	go build -buildmode=plugin -o message.so *.go
 
 test: lint
-	go test -coverprofile=cov.out
+	go test -coverprofile=cov.out ./...
 
 .PHONY: all build
