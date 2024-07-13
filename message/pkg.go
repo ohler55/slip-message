@@ -16,8 +16,13 @@ var Pkg = slip.Package{
 
 func init() {
 	Pkg.Initialize(map[string]*slip.VarVal{})
+	slip.DefConstant(slip.Symbol("*message*"), &Pkg, "")
+	slip.DefConstant(slip.Symbol("*msg*"), &Pkg, "")
+	defAppHubFlavor()
+	defJetstreamHubFlavor()
+	defSubscriberFlavor()
+
+	Pkg.Initialize(nil, &stack{})
 	slip.AddPackage(&Pkg)
 	slip.UserPkg.Use(&Pkg)
-	Pkg.Set("*message*", &Pkg)
-	Pkg.Set("*msg*", &Pkg)
 }

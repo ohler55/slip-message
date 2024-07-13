@@ -46,8 +46,7 @@ type appHub struct {
 	mu     sync.Mutex // for subs list as well as distribution
 }
 
-func init() {
-	Pkg.Initialize(nil)
+func defAppHubFlavor() {
 	appHubFlavor = flavors.DefFlavor("app-hub-flavor",
 		map[string]slip.Object{},
 		nil,

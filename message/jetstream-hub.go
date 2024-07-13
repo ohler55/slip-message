@@ -31,8 +31,7 @@ type jsHub struct {
 	pending map[int64]*nats.Msg
 }
 
-func init() {
-	Pkg.Initialize(nil)
+func defJetstreamHubFlavor() {
 	jetstreamHubFlavor = flavors.DefFlavor("jetstream-hub-flavor",
 		map[string]slip.Object{},
 		nil,

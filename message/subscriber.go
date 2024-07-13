@@ -14,8 +14,7 @@ var (
 	subscriberFlavor *flavors.Flavor
 )
 
-func init() {
-	Pkg.Initialize(nil)
+func defSubscriberFlavor() {
 	subscriberFlavor = flavors.DefFlavor("subscriber-flavor",
 		map[string]slip.Object{},
 		nil,
