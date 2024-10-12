@@ -132,7 +132,7 @@ func encodeMsg(m slip.Object, useSen bool) (msg slip.Object) {
 	case slip.String:
 		msg = tm
 	case *flavors.Instance:
-		if tm.Flavor == bag.Flavor() {
+		if tm.Type == bag.Flavor() {
 			if useSen {
 				msg = slip.String(sen.String(tm.Any))
 			} else {
@@ -249,7 +249,7 @@ func getNextArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *su
 	}
 	self = s.Get("self").(*flavors.Instance)
 	inst, ok := args[0].(*flavors.Instance)
-	if !ok || inst.Flavor != subscriberFlavor {
+	if !ok || inst.Type != subscriberFlavor {
 		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
 	}
 	sub = inst.Any.(*subscription)
@@ -273,7 +273,7 @@ func getAckArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *sub
 	}
 	self = s.Get("self").(*flavors.Instance)
 	inst, ok := args[0].(*flavors.Instance)
-	if !ok || inst.Flavor != subscriberFlavor {
+	if !ok || inst.Type != subscriberFlavor {
 		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
 	}
 	sub = inst.Any.(*subscription)
