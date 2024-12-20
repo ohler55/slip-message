@@ -7,7 +7,7 @@ toolchain go1.23.2
 require (
 	github.com/nats-io/nats-server/v2 v2.10.12
 	github.com/nats-io/nats.go v1.34.1
-	github.com/ohler55/ojg v1.24.0
+	github.com/ohler55/ojg v1.25.0
 	github.com/ohler55/slip v0.9.5
 )
 
@@ -20,7 +20,7 @@ require (
 	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/sys v0.21.0 // indirect
 	golang.org/x/term v0.21.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 )
 
