@@ -2,13 +2,13 @@ module github.com/ohler55/slip-message
 
 go 1.23
 
-toolchain go1.23.2
+toolchain go1.23.5
 
 require (
 	github.com/nats-io/nats-server/v2 v2.10.12
 	github.com/nats-io/nats.go v1.34.1
-	github.com/ohler55/ojg v1.26.0
-	github.com/ohler55/slip v0.9.8
+	github.com/ohler55/ojg v1.26.1
+	github.com/ohler55/slip v0.9.9
 )
 
 require (
