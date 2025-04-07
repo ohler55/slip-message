@@ -37,7 +37,8 @@ func decodeMessage(msg, contentType slip.Object) slip.Object {
 				inst.Any = sen.MustParse([]byte(ss))
 				msg = inst
 			case '(':
-				if code, _ := slip.ReadOne([]byte(ss)); 0 < len(code) {
+				scope := slip.NewScope()
+				if code, _ := slip.ReadOne([]byte(ss), scope); 0 < len(code) {
 					msg = code[0]
 				}
 			}
@@ -46,7 +47,8 @@ func decodeMessage(msg, contentType slip.Object) slip.Object {
 			inst.Any = sen.MustParse([]byte(ss))
 			msg = inst
 		case slip.Symbol(":lisp"):
-			if code, _ := slip.ReadOne([]byte(ss)); 0 < len(code) {
+			scope := slip.NewScope()
+			if code, _ := slip.ReadOne([]byte(ss), scope); 0 < len(code) {
 				msg = code[0]
 			}
 		case slip.Symbol(":raw"):

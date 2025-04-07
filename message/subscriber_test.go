@@ -14,10 +14,10 @@ import (
 
 func TestSubscriberBasic(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`, scope).Eval(scope, nil)
 	scope.Let("hub", hub)
 	sub := slip.ReadString(
-		`(send hub :subscribe "one.two.three" (lambda (m) nil) :content-type :json :name "tester")`).Eval(scope, nil)
+		`(send hub :subscribe "one.two.three" (lambda (m) nil) :content-type :json :name "tester")`, scope).Eval(scope, nil)
 	scope.Let("sub", sub)
 
 	(&sliptest.Function{
@@ -106,7 +106,7 @@ func TestSubscriberDocs(t *testing.T) {
 		":close",
 		":next",
 	} {
-		_ = slip.ReadString(fmt.Sprintf(`(describe-method subscriber-flavor %s out)`, method)).Eval(scope, nil)
+		_ = slip.ReadString(fmt.Sprintf(`(describe-method subscriber-flavor %s out)`, method), scope).Eval(scope, nil)
 		tt.Equal(t, true, strings.Contains(out.String(), method))
 		out.Reset()
 	}
@@ -114,7 +114,7 @@ func TestSubscriberDocs(t *testing.T) {
 
 func TestSubscriberBadName(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`, scope).Eval(scope, nil)
 	scope.Let("hub", hub)
 	(&sliptest.Function{
 		Scope:     scope,
@@ -125,7 +125,7 @@ func TestSubscriberBadName(t *testing.T) {
 
 func TestSubscriberBadSubject(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`, scope).Eval(scope, nil)
 	scope.Let("hub", hub)
 	(&sliptest.Function{
 		Scope:     scope,
@@ -136,7 +136,7 @@ func TestSubscriberBadSubject(t *testing.T) {
 
 func TestSubscriberBadContentType(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-instance 'app-hub-flavor)`, scope).Eval(scope, nil)
 	scope.Let("hub", hub)
 	(&sliptest.Function{
 		Scope:     scope,
