@@ -35,7 +35,6 @@ linters:
   disable:
     - govet
     - dupl ## JOE Don't want to bother
-    - goconst
     - depguard
     - gochecknoglobals
     - gochecknoinits
