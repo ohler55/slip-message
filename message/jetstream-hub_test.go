@@ -17,9 +17,9 @@ import (
 
 func TestJetstreamHubSubscribe(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL), scope).Eval(scope, nil)
 	scope.Let("jhub", hub)
-	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	defer func() { _ = slip.ReadString(`(send jhub :close)`, scope).Eval(scope, nil) }()
 	(&sliptest.Function{
 		Scope:  scope,
 		Source: `jhub`,
@@ -139,7 +139,7 @@ func TestJetstreamHubDocs(t *testing.T) {
 		":ack",
 		":set-error-handler",
 	} {
-		_ = slip.ReadString(fmt.Sprintf(`(describe-method jetstream-hub-flavor %s out)`, method)).Eval(scope, nil)
+		_ = slip.ReadString(fmt.Sprintf(`(describe-method jetstream-hub-flavor %s out)`, method), scope).Eval(scope, nil)
 		tt.Equal(t, true, strings.Contains(out.String(), method))
 		out.Reset()
 	}
@@ -151,11 +151,11 @@ func TestJetstreamHubPublish(t *testing.T) {
 	defer close(mq)
 	scope.Set("mq", mq)
 
-	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL), scope).Eval(scope, nil)
 	scope.Let("jhub", hub)
-	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	defer func() { _ = slip.ReadString(`(send jhub :close)`, scope).Eval(scope, nil) }()
 	sub := slip.ReadString(
-		`(send jhub :subscribe "top.middle.*" (lambda (m) (channel-push mq m)))`).Eval(scope, nil)
+		`(send jhub :subscribe "top.middle.*" (lambda (m) (channel-push mq m)))`, scope).Eval(scope, nil)
 	scope.Let("sub", sub)
 	(&sliptest.Function{
 		Scope:  scope,
@@ -179,15 +179,15 @@ func TestJetstreamHubPublish(t *testing.T) {
 
 func TestJetstreamHubErrorHandler(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL), scope).Eval(scope, nil)
 	scope.Let("jhub", hub)
-	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
-	sub := slip.ReadString(`(send jhub :subscribe "boo.boo" (lambda (m) (panic "broke it")))`).Eval(scope, nil)
+	defer func() { _ = slip.ReadString(`(send jhub :close)`, scope).Eval(scope, nil) }()
+	sub := slip.ReadString(`(send jhub :subscribe "boo.boo" (lambda (m) (panic "broke it")))`, scope).Eval(scope, nil)
 	scope.Let("sub", sub)
 	scope.Let("error-count", slip.Fixnum(0))
 	_ = slip.ReadString(
-		`(send jhub :set-error-handler (lambda (err) (setq error-count (1+ error-count))))`).Eval(scope, nil)
-	_ = slip.ReadString(`(send jhub :publish "boo.boo" "A message.")`).Eval(scope, nil)
+		`(send jhub :set-error-handler (lambda (err) (setq error-count (1+ error-count))))`, scope).Eval(scope, nil)
+	_ = slip.ReadString(`(send jhub :publish "boo.boo" "A message.")`, scope).Eval(scope, nil)
 	tt.Equal(t, true, waitForCond(scope, "error-count", slip.Fixnum(1), time.Second*2))
 	(&sliptest.Function{
 		Scope:     scope,
@@ -198,11 +198,11 @@ func TestJetstreamHubErrorHandler(t *testing.T) {
 
 func TestJetstreamHubRequest(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL), scope).Eval(scope, nil)
 	scope.Let("jhub", hub)
-	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	defer func() { _ = slip.ReadString(`(send jhub :close)`, scope).Eval(scope, nil) }()
 	_ = slip.ReadString(
-		`(send jhub :subscribe "requests" (lambda (m) "got it!"))`).Eval(scope, nil)
+		`(send jhub :subscribe "requests" (lambda (m) "got it!"))`, scope).Eval(scope, nil)
 	(&sliptest.Function{
 		Scope:  scope,
 		Source: `(send jhub :request "requests" "A message.")`,
@@ -223,9 +223,9 @@ func TestJetstreamHubAddQueue(t *testing.T) {
 	deleteJetstreamStream(t, "q2")
 
 	scope := slip.NewScope()
-	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL), scope).Eval(scope, nil)
 	scope.Let("jhub", hub)
-	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	defer func() { _ = slip.ReadString(`(send jhub :close)`, scope).Eval(scope, nil) }()
 	(&sliptest.Function{
 		Scope:  scope,
 		Source: `(send jhub :add-queue "q2" :work '("name1"))`,
@@ -267,19 +267,19 @@ func TestJetstreamHubAddQueue(t *testing.T) {
 func TestJetstreamHubWorkQueue(t *testing.T) {
 	deleteJetstreamStream(t, "q2")
 	scope := slip.NewScope()
-	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL), scope).Eval(scope, nil)
 	scope.Let("jhub", hub)
-	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	defer func() { _ = slip.ReadString(`(send jhub :close)`, scope).Eval(scope, nil) }()
 	_ = slip.ReadString(`(send jhub :add-queue "q2" :work '("name1")
                                :max-messages 3
-                               :subjects '("test.q2"))`).Eval(scope, nil)
-	_ = slip.ReadString(`(send jhub :publish "test.q2" "first message")`).Eval(scope, nil)
+                               :subjects '("test.q2"))`, scope).Eval(scope, nil)
+	_ = slip.ReadString(`(send jhub :publish "test.q2" "first message")`, scope).Eval(scope, nil)
 	_ = slip.ReadString(`(defun condense-jqueue (q)
                           (list
                            (cdr (assoc 'name q))
-                           (cdr (assoc 'queued q))))`).Eval(scope, nil)
+                           (cdr (assoc 'queued q))))`, scope).Eval(scope, nil)
 
-	sub := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name1")`).Eval(scope, nil)
+	sub := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name1")`, scope).Eval(scope, nil)
 	scope.Let("sub", sub)
 
 	checkCode := `(cdr (assoc 'queued (assoc '(name . "q2") (send jhub :queues))))`
@@ -295,7 +295,7 @@ func TestJetstreamHubWorkQueue(t *testing.T) {
 	// Before ack
 	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
 
-	_ = slip.ReadString(`(send jhub :publish "test.q2" "second message")`).Eval(scope, nil)
+	_ = slip.ReadString(`(send jhub :publish "test.q2" "second message")`, scope).Eval(scope, nil)
 	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(2), time.Second*2))
 
 	tf = sliptest.Function{
@@ -324,17 +324,17 @@ func TestJetstreamHubWorkQueue(t *testing.T) {
 func TestJetstreamHubAllQueue(t *testing.T) {
 	deleteJetstreamStream(t, "q2")
 	scope := slip.NewScope()
-	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL)).Eval(scope, nil)
+	hub := slip.ReadString(fmt.Sprintf(`(make-instance 'jetstream-hub-flavor :url %q)`, jetstreamURL), scope).Eval(scope, nil)
 	scope.Let("jhub", hub)
-	defer func() { _ = slip.ReadString(`(send jhub :close)`).Eval(scope, nil) }()
+	defer func() { _ = slip.ReadString(`(send jhub :close)`, scope).Eval(scope, nil) }()
 	_ = slip.ReadString(`(send jhub :add-queue "q2" :all '("name1" "name2")
-                               :subjects '("test.q2"))`).Eval(scope, nil)
-	sub1 := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name1")`).Eval(scope, nil)
+                               :subjects '("test.q2"))`, scope).Eval(scope, nil)
+	sub1 := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name1")`, scope).Eval(scope, nil)
 	scope.Let("sub1", sub1)
-	sub2 := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name2")`).Eval(scope, nil)
+	sub2 := slip.ReadString(`(send jhub :subscribe "test.q2" nil :name "name2")`, scope).Eval(scope, nil)
 	scope.Let("sub2", sub2)
 
-	_ = slip.ReadString(`(send jhub :publish "test.q2" "first message")`).Eval(scope, nil)
+	_ = slip.ReadString(`(send jhub :publish "test.q2" "first message")`, scope).Eval(scope, nil)
 	checkCode := `(cdr (assoc 'queued (assoc '(name . "q2") (send jhub :queues))))`
 	tt.Equal(t, true, waitForCond(scope, checkCode, slip.Fixnum(1), time.Second*2))
 
@@ -357,7 +357,7 @@ func TestJetstreamHubAllQueue(t *testing.T) {
 func waitForCond(s *slip.Scope, code string, target slip.Object, timeout time.Duration) bool {
 	start := time.Now()
 	for time.Since(start) < timeout {
-		value := slip.ReadString(code).Eval(s, nil)
+		value := slip.ReadString(code, s).Eval(s, nil)
 		// fmt.Printf("*** check %s\n", value)
 		if value == target {
 			return true

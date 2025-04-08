@@ -11,7 +11,7 @@ import (
 
 func TestPublish(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-app-hub)`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-app-hub)`, scope).Eval(scope, nil)
 	scope.Let("hub", hub)
 	(&sliptest.Function{
 		Scope:  scope,

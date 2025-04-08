@@ -11,9 +11,9 @@ import (
 
 func TestSubscribers(t *testing.T) {
 	scope := slip.NewScope()
-	hub := slip.ReadString(`(make-app-hub)`).Eval(scope, nil)
+	hub := slip.ReadString(`(make-app-hub)`, scope).Eval(scope, nil)
 	scope.Let("hub", hub)
-	_ = slip.ReadString(`(message-subscribe hub "one.two" (lambda (m) nil))`).Eval(scope, nil)
+	_ = slip.ReadString(`(message-subscribe hub "one.two" (lambda (m) nil))`, scope).Eval(scope, nil)
 	(&sliptest.Function{
 		Scope:  scope,
 		Source: `(message-subscribers hub "one.two")`,
