@@ -5,8 +5,8 @@ go 1.24
 require (
 	github.com/nats-io/nats-server/v2 v2.10.22
 	github.com/nats-io/nats.go v1.37.0
-	github.com/ohler55/ojg v1.26.4
-	github.com/ohler55/slip v1.0.1
+	github.com/ohler55/ojg v1.26.7
+	github.com/ohler55/slip v1.1.0
 )
 
 require (
