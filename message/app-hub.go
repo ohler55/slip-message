@@ -81,12 +81,11 @@ func (caller appHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.O
 	return nil
 }
 
-func (caller appHubInitCaller) Docs() string {
-	return `__:init__
-
-
-Sets the initial values when _make-instance_ is called.
-`
+func (caller appHubInitCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":init",
+		Text: "Sets the initial value when _make-instance_ is called.",
+	}
 }
 
 type appHubSubscribeCaller struct{}
@@ -107,8 +106,37 @@ func (caller appHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (
 	return
 }
 
-func (caller appHubSubscribeCaller) Docs() string {
-	return subscribeDocs
+func (caller appHubSubscribeCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":subscribe",
+		Text: `Returns a _subscriber-flavor_ instance that represents a subscription on the _subject_.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to listen on or queue to be a consumer of.",
+			},
+			{
+				Name: "callback",
+				Type: "function|nil",
+				Text: `Can be either _nil_ when the _:next_ method will be called on a queue or
+a function to call when a message is received.`,
+			},
+			{Name: "&key"},
+			{
+				Name: ":content-type",
+				Type: "symbol",
+				Text: `An optional argument of the expected content type which can be one of
+_nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.`,
+			},
+			{
+				Name: ":name",
+				Type: "string",
+				Text: `Name of the subscriber is used with work queues.`,
+			},
+		},
+		Return: "subscriber-flavor",
+	}
 }
 
 type appHubUnsubscribeCaller struct{}
@@ -149,8 +177,19 @@ func (caller appHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, _ int)
 	return slip.Fixnum(len(removed))
 }
 
-func (caller appHubUnsubscribeCaller) Docs() string {
-	return unsubscribeDocs
+func (caller appHubUnsubscribeCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":subscribe",
+		Text: `Returns the number of instances unsubscribed.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subscriber",
+				Type: "string|subscriber-flavor",
+				Text: "Either a subject or a specific subscriber instance.",
+			},
+		},
+		Return: "fixnum",
+	}
 }
 
 type appHubSubscribersCaller struct{}
@@ -180,8 +219,20 @@ func (caller appHubSubscribersCaller) Call(s *slip.Scope, args slip.List, _ int)
 	return subs
 }
 
-func (caller appHubSubscribersCaller) Docs() string {
-	return subscribersDocs
+func (caller appHubSubscribersCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":subscribers",
+		Text: `Returns a list of _subscriber-flavor_ instances that have subscribed to _subject_.
+A _nil_ _subject_ matches any subscriber.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to filter the subscriber list.",
+			},
+		},
+		Return: "list",
+	}
 }
 
 type appHubPublishCaller struct{}
@@ -220,8 +271,31 @@ func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 	return nil
 }
 
-func (caller appHubPublishCaller) Docs() string {
-	return publishDocs
+func (caller appHubPublishCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":publish",
+		Text: `Publish a message which is delivered to any _subscribers_ matching the _subject_.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to publish the message on.",
+			},
+			{
+				Name: "message",
+				Type: "string|bag|object",
+				Text: `Either a _string_ for :raw content, a _bag_ for JSON or SEN format, or
+an sexpression for _lisp_ content.`,
+			},
+			{Name: "&optional"},
+			{
+				Name: "content-type",
+				Type: "symbol",
+				Text: `Content type of the message which is in effect for encoding instances of the
+_bag-flavor_ and can be _:json_ or _:sen_.`,
+			},
+		},
+	}
 }
 
 type appHubRequestCaller struct{}
@@ -252,8 +326,37 @@ func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (re
 	return
 }
 
-func (caller appHubRequestCaller) Docs() string {
-	return requestDocs
+func (caller appHubRequestCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":request",
+		Text: `Send a request message on _subject_ and wait for a reply.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to publish the request message on.",
+			},
+			{
+				Name: "message",
+				Type: "string|bag|object",
+				Text: `Either a _string_ for :raw content, a _bag_ for JSON or SEN format, or
+an sexpression for _lisp_ content.`,
+			},
+			{Name: "&key"},
+			{
+				Name: ":content-type",
+				Type: "symbol",
+				Text: `Content type of the message which is in effect for encoding instances of the
+ _bag-flavor_ and can be _:json_ or _:sen_.`,
+			},
+			{
+				Name: ":timeout",
+				Type: "real",
+				Text: `A number denoting the seconds to wait for a reply before a timeout panic.`,
+			},
+		},
+		Return: "bag",
+	}
 }
 
 type appHubCloseCaller struct{}
@@ -273,8 +376,11 @@ func (caller appHubCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.
 	return nil
 }
 
-func (caller appHubCloseCaller) Docs() string {
-	return closeDocs
+func (caller appHubCloseCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":close",
+		Text: `Closes the hub.`,
+	}
 }
 
 type appHubAddQueueCaller struct{}
@@ -294,8 +400,34 @@ func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) sl
 	return nil
 }
 
-func (caller appHubAddQueueCaller) Docs() string {
-	return addQueueDocs
+func (caller appHubAddQueueCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":add-queue",
+		Text: `Add a queue with the provided parameters.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "name",
+				Type: "string",
+				Text: "Name of the queue.",
+			},
+			{
+				Name: "retention",
+				Type: "symbol",
+				Text: `Either _:work_ for a work queue or _:all_ for a queue that provides for all consumers.`,
+			},
+			{Name: "&key"},
+			{
+				Name: ":max-messages",
+				Type: "fixnum",
+				Text: `The maximum number of messages to queue before blocking.`,
+			},
+			{
+				Name: ":subjects",
+				Type: "list",
+				Text: `Subjects to listen on. If none are provided then the queue _name_ is used as the only subject.`,
+			},
+		},
+	}
 }
 
 type appHubQueuesCaller struct{}
@@ -313,8 +445,12 @@ func (caller appHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int) slip
 	return list
 }
 
-func (caller appHubQueuesCaller) Docs() string {
-	return queuesDocs
+func (caller appHubQueuesCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name:   ":queues",
+		Text:   `Returns a list of queue descriptions consisting the queue name, retention, and the consumers.`,
+		Return: "list",
+	}
 }
 
 type appHubCloseQueueCaller struct{}
@@ -346,8 +482,18 @@ func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	return nil
 }
 
-func (caller appHubCloseQueueCaller) Docs() string {
-	return closeQueueDocs
+func (caller appHubCloseQueueCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":close-queue",
+		Text: `Close a queue.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "name",
+				Type: "string",
+				Text: "Name of the queue to close.",
+			},
+		},
+	}
 }
 
 type appHubNextCaller struct{}
@@ -372,8 +518,25 @@ func (caller appHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.O
 	return nil
 }
 
-func (caller appHubNextCaller) Docs() string {
-	return nextDocs
+func (caller appHubNextCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":next",
+		Text: `Get the next message on a queue and return the message and message identifier.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subscriber",
+				Type: "subscriber-flavor",
+				Text: "Must be a queue subscriber.",
+			},
+			{Name: "&key"},
+			{
+				Name: ":timeout",
+				Type: "real",
+				Text: `A number denoting the seconds to wait for a reply before a timeout panic.`,
+			},
+		},
+		Return: "bag, fixnum",
+	}
 }
 
 type appHubAckCaller struct{}
@@ -397,8 +560,23 @@ func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Ob
 	return nil
 }
 
-func (caller appHubAckCaller) Docs() string {
-	return ackDocs
+func (caller appHubAckCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":ack",
+		Text: `ACK a message for the subscriber.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subscriber",
+				Type: "subscriber-flavor",
+				Text: "Must be a queue subscriber.",
+			},
+			{
+				Name: "message-id",
+				Type: "fixnum",
+				Text: `The identifier for the message to ACK.`,
+			},
+		},
+	}
 }
 
 func subjectMatch(subject, filter []string) bool {
