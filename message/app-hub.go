@@ -81,12 +81,11 @@ func (caller appHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.O
 	return nil
 }
 
-func (caller appHubInitCaller) Docs() string {
-	return `__:init__
-
-
-Sets the initial values when _make-instance_ is called.
-`
+func (caller appHubInitCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":init",
+		Text: "Sets the initial value when _make-instance_ is called.",
+	}
 }
 
 type appHubSubscribeCaller struct{}
@@ -107,8 +106,8 @@ func (caller appHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (
 	return
 }
 
-func (caller appHubSubscribeCaller) Docs() string {
-	return subscribeDocs
+func (caller appHubSubscribeCaller) FuncDocs() *slip.FuncDoc {
+	return &subscribeFuncDoc
 }
 
 type appHubUnsubscribeCaller struct{}
@@ -149,8 +148,8 @@ func (caller appHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, _ int)
 	return slip.Fixnum(len(removed))
 }
 
-func (caller appHubUnsubscribeCaller) Docs() string {
-	return unsubscribeDocs
+func (caller appHubUnsubscribeCaller) FuncDocs() *slip.FuncDoc {
+	return &unsubscribeFuncDoc
 }
 
 type appHubSubscribersCaller struct{}
@@ -180,8 +179,8 @@ func (caller appHubSubscribersCaller) Call(s *slip.Scope, args slip.List, _ int)
 	return subs
 }
 
-func (caller appHubSubscribersCaller) Docs() string {
-	return subscribersDocs
+func (caller appHubSubscribersCaller) FuncDocs() *slip.FuncDoc {
+	return &subscribersFuncDoc
 }
 
 type appHubPublishCaller struct{}
@@ -220,8 +219,8 @@ func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 	return nil
 }
 
-func (caller appHubPublishCaller) Docs() string {
-	return publishDocs
+func (caller appHubPublishCaller) FuncDocs() *slip.FuncDoc {
+	return &publishFuncDoc
 }
 
 type appHubRequestCaller struct{}
@@ -252,8 +251,8 @@ func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (re
 	return
 }
 
-func (caller appHubRequestCaller) Docs() string {
-	return requestDocs
+func (caller appHubRequestCaller) FuncDocs() *slip.FuncDoc {
+	return &requestFuncDoc
 }
 
 type appHubCloseCaller struct{}
@@ -273,8 +272,8 @@ func (caller appHubCloseCaller) Call(s *slip.Scope, args slip.List, _ int) slip.
 	return nil
 }
 
-func (caller appHubCloseCaller) Docs() string {
-	return closeDocs
+func (caller appHubCloseCaller) FuncDocs() *slip.FuncDoc {
+	return &closeFuncDoc
 }
 
 type appHubAddQueueCaller struct{}
@@ -294,8 +293,8 @@ func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) sl
 	return nil
 }
 
-func (caller appHubAddQueueCaller) Docs() string {
-	return addQueueDocs
+func (caller appHubAddQueueCaller) FuncDocs() *slip.FuncDoc {
+	return &addQueueFuncDoc
 }
 
 type appHubQueuesCaller struct{}
@@ -313,8 +312,8 @@ func (caller appHubQueuesCaller) Call(s *slip.Scope, args slip.List, _ int) slip
 	return list
 }
 
-func (caller appHubQueuesCaller) Docs() string {
-	return queuesDocs
+func (caller appHubQueuesCaller) FuncDocs() *slip.FuncDoc {
+	return &queuesFuncDoc
 }
 
 type appHubCloseQueueCaller struct{}
@@ -346,8 +345,8 @@ func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	return nil
 }
 
-func (caller appHubCloseQueueCaller) Docs() string {
-	return closeQueueDocs
+func (caller appHubCloseQueueCaller) FuncDocs() *slip.FuncDoc {
+	return &closeQueueFuncDoc
 }
 
 type appHubNextCaller struct{}
@@ -372,8 +371,8 @@ func (caller appHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.O
 	return nil
 }
 
-func (caller appHubNextCaller) Docs() string {
-	return nextDocs
+func (caller appHubNextCaller) FuncDocs() *slip.FuncDoc {
+	return &nextFuncDoc
 }
 
 type appHubAckCaller struct{}
@@ -397,8 +396,8 @@ func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Ob
 	return nil
 }
 
-func (caller appHubAckCaller) Docs() string {
-	return ackDocs
+func (caller appHubAckCaller) FuncDocs() *slip.FuncDoc {
+	return &ackFuncDoc
 }
 
 func subjectMatch(subject, filter []string) bool {

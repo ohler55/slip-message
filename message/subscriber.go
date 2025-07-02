@@ -47,12 +47,12 @@ func (caller subscriberHubCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 	return self.Any.(*subscription).hub
 }
 
-func (caller subscriberHubCaller) Docs() string {
-	return `__:hub__ => _instance_
-
-
-Returns the hub instance this subscriber is subscribed through.
-`
+func (caller subscriberHubCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name:   ":hub",
+		Text:   `Returns the hub instance this subscriber is subscribed through.`,
+		Return: "app-hub-flavor|jetstream-hub-flavor",
+	}
 }
 
 type subscriberSubjectCaller struct{}
@@ -62,12 +62,12 @@ func (caller subscriberSubjectCaller) Call(s *slip.Scope, args slip.List, _ int)
 	return slip.String(strings.Join(self.Any.(*subscription).subject, "."))
 }
 
-func (caller subscriberSubjectCaller) Docs() string {
-	return `__:subject__ => _string_
-
-
-Returns the subject this subscriber is subscribed to.
-`
+func (caller subscriberSubjectCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name:   ":subject",
+		Text:   `Returns the subject this subscriber is subscribed to.`,
+		Return: "string",
+	}
 }
 
 type subscriberCallbackCaller struct{}
@@ -80,12 +80,13 @@ func (caller subscriberCallbackCaller) Call(s *slip.Scope, args slip.List, _ int
 	return
 }
 
-func (caller subscriberCallbackCaller) Docs() string {
-	return `__:callback__ => _function_
-
-
-Returns the callback this subscriber invokes on receiving a message or nil if polling is expected with _:next_.
-`
+func (caller subscriberCallbackCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":callback",
+		Text: `Returns the callback this subscriber invokes on receiving a message or nil
+if polling is expected with _:next_.`,
+		Return: "function",
+	}
 }
 
 type subscriberContentTypeCaller struct{}
@@ -95,12 +96,12 @@ func (caller subscriberContentTypeCaller) Call(s *slip.Scope, args slip.List, _ 
 	return self.Any.(*subscription).contentType
 }
 
-func (caller subscriberContentTypeCaller) Docs() string {
-	return `__:content-type__ => _keyword_|_nil_
-
-
-Returns the content-type this subscriber expects.
-`
+func (caller subscriberContentTypeCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name:   ":content-type",
+		Text:   `Returns the content-type this subscriber expects.`,
+		Return: "keyword|nil",
+	}
 }
 
 type subscriberNameCaller struct{}
@@ -110,12 +111,12 @@ func (caller subscriberNameCaller) Call(s *slip.Scope, args slip.List, _ int) sl
 	return slip.String(self.Any.(*subscription).name)
 }
 
-func (caller subscriberNameCaller) Docs() string {
-	return `__:name__ => _string_
-
-
-Returns the name this subscriber is subscribed to.
-`
+func (caller subscriberNameCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name:   ":name",
+		Text:   `Returns the name this subscriber is subscribed to.`,
+		Return: "string",
+	}
 }
 
 type subscriberSetCallbackCaller struct{}
@@ -130,12 +131,18 @@ func (caller subscriberSetCallbackCaller) Call(s *slip.Scope, args slip.List, _ 
 	return nil
 }
 
-func (caller subscriberSetCallbackCaller) Docs() string {
-	return `__:set-callback__ _function_ => _nil_
-
-
-Sets the callback of this subscriber_.
-`
+func (caller subscriberSetCallbackCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":set-callback",
+		Text: `Sets the callback of this subscriber.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "function",
+				Type: "function",
+				Text: "The function to use as the callback for the subscriber.",
+			},
+		},
+	}
 }
 
 type subscriberSetContentTypeCaller struct{}
@@ -146,12 +153,18 @@ func (caller subscriberSetContentTypeCaller) Call(s *slip.Scope, args slip.List,
 	return nil
 }
 
-func (caller subscriberSetContentTypeCaller) Docs() string {
-	return `__:set-content-type__ _nil_|_:json_|_:lisp_|_:auto_|_:raw_
-
-
-Sets the content-type of this subscriber.
-`
+func (caller subscriberSetContentTypeCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":set-content-type",
+		Text: `Sets the content-type of this subscriber.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "type",
+				Type: "keyword",
+				Text: "_nil_|_:json_|_:lisp_|_:auto_|_:raw_",
+			},
+		},
+	}
 }
 
 type subscriberCloseCaller struct{}
@@ -163,12 +176,11 @@ func (caller subscriberCloseCaller) Call(s *slip.Scope, args slip.List, depth in
 	return nil
 }
 
-func (caller subscriberCloseCaller) Docs() string {
-	return `__:close__ => _nil_
-
-
-Closes the subscriber which stops the subscriber from listening on it's subject.
-`
+func (caller subscriberCloseCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":close",
+		Text: `Closes the subscriber which stops the subscriber from listening on it's subject.`,
+	}
 }
 
 type subscriberNextCaller struct{}
@@ -182,12 +194,20 @@ func (caller subscriberNextCaller) Call(s *slip.Scope, args slip.List, depth int
 	return sub.hub.Receive(s, ":next", slip.List{self}, depth)
 }
 
-func (caller subscriberNextCaller) Docs() string {
-	return `__:next__ &optional _timeout_=> _object_, _fixnum_
-
-
-Get the next message on a queue and return the message and message identifier.
-`
+func (caller subscriberNextCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":next",
+		Text: `Sets the content-type of this subscriber.`,
+		Args: []*slip.DocArg{
+			{Name: "&optional"},
+			{
+				Name: "timeout",
+				Type: "real",
+				Text: "The number of seconds to wait for the next message.",
+			},
+		},
+		Return: "bag, fixnum",
+	}
 }
 
 func makeSubscriber(hub *flavors.Instance, subject, cb, ct, name slip.Object) (
