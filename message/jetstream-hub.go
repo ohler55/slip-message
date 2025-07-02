@@ -129,17 +129,39 @@ func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	return nil
 }
 
-func (caller jetstreamHubInitCaller) Docs() string {
-	return `__:init__ &key _url_ _credentials_ _tls-ca_ _tls-cert_ _tls-key_
-   _:url_ of the jetstream server
-   _:credentials_ for the jetstream connection
-   _:tls-ca_ for the jetstream connection
-   _:tls-cert_ for the jetstream connection
-   _:tls-key_ for the jetstream connection
-
-
-Sets the initial values when _make-instance_ is called.
-`
+func (caller jetstreamHubInitCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":init",
+		Text: "Sets the initial value when _make-instance_ is called.",
+		Args: []*slip.DocArg{
+			{Name: "&key"},
+			{
+				Name: ":url",
+				Type: "string",
+				Text: "URL of the jetstream server.",
+			},
+			{
+				Name: ":credentials",
+				Type: "string",
+				Text: "Credentials for the jetstream connection.",
+			},
+			{
+				Name: ":tls-ca",
+				Type: "string",
+				Text: "The TLS CA the jetstream connection",
+			},
+			{
+				Name: ":tls-cert",
+				Type: "string",
+				Text: "The TLS Cert the jetstream connection",
+			},
+			{
+				Name: ":tls-key",
+				Type: "string",
+				Text: "The TLS key the jetstream connection",
+			},
+		},
+	}
 }
 
 type jetstreamHubSubscribeCaller struct{}
@@ -177,8 +199,8 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 	return
 }
 
-func (caller jetstreamHubSubscribeCaller) Docs() string {
-	return subscribeDocs
+func (caller jetstreamHubSubscribeCaller) FuncDocs() *slip.FuncDoc {
+	return &subscribeFuncDoc
 }
 
 type jetstreamHubUnsubscribeCaller struct{}
@@ -219,8 +241,8 @@ func (caller jetstreamHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, 
 	return slip.Fixnum(len(removed))
 }
 
-func (caller jetstreamHubUnsubscribeCaller) Docs() string {
-	return unsubscribeDocs
+func (caller jetstreamHubUnsubscribeCaller) FuncDocs() *slip.FuncDoc {
+	return &unsubscribeFuncDoc
 }
 
 type jetstreamHubSubscribersCaller struct{}
@@ -250,8 +272,8 @@ func (caller jetstreamHubSubscribersCaller) Call(s *slip.Scope, args slip.List, 
 	return subs
 }
 
-func (caller jetstreamHubSubscribersCaller) Docs() string {
-	return subscribersDocs
+func (caller jetstreamHubSubscribersCaller) FuncDocs() *slip.FuncDoc {
+	return &subscribersFuncDoc
 }
 
 type jetstreamHubPublishCaller struct{}
@@ -278,8 +300,8 @@ func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, _ in
 	return nil
 }
 
-func (caller jetstreamHubPublishCaller) Docs() string {
-	return publishDocs
+func (caller jetstreamHubPublishCaller) FuncDocs() *slip.FuncDoc {
+	return &publishFuncDoc
 }
 
 type jetstreamHubRequestCaller struct{}
@@ -294,8 +316,8 @@ func (caller jetstreamHubRequestCaller) Call(s *slip.Scope, args slip.List, _ in
 	return decodeMessage(slip.String(m.Data), nil)
 }
 
-func (caller jetstreamHubRequestCaller) Docs() string {
-	return requestDocs
+func (caller jetstreamHubRequestCaller) FuncDocs() *slip.FuncDoc {
+	return &requestFuncDoc
 }
 
 type jetstreamHubCloseCaller struct{}
@@ -307,8 +329,8 @@ func (caller jetstreamHubCloseCaller) Call(s *slip.Scope, args slip.List, _ int)
 	return nil
 }
 
-func (caller jetstreamHubCloseCaller) Docs() string {
-	return closeDocs
+func (caller jetstreamHubCloseCaller) FuncDocs() *slip.FuncDoc {
+	return &closeFuncDoc
 }
 
 type jetstreamHubAddQueueCaller struct{}
@@ -340,8 +362,8 @@ func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ i
 	return nil
 }
 
-func (caller jetstreamHubAddQueueCaller) Docs() string {
-	return addQueueDocs
+func (caller jetstreamHubAddQueueCaller) FuncDocs() *slip.FuncDoc {
+	return &addQueueFuncDoc
 }
 
 type jetstreamHubQueuesCaller struct{}
@@ -386,8 +408,8 @@ top:
 	return list
 }
 
-func (caller jetstreamHubQueuesCaller) Docs() string {
-	return queuesDocs
+func (caller jetstreamHubQueuesCaller) FuncDocs() *slip.FuncDoc {
+	return &queuesFuncDoc
 }
 
 type jetstreamHubCloseQueueCaller struct{}
@@ -403,8 +425,8 @@ func (caller jetstreamHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _
 	return nil
 }
 
-func (caller jetstreamHubCloseQueueCaller) Docs() string {
-	return closeQueueDocs
+func (caller jetstreamHubCloseQueueCaller) FuncDocs() *slip.FuncDoc {
+	return &closeQueueFuncDoc
 }
 
 type jetstreamHubNextCaller struct{}
@@ -432,8 +454,8 @@ func (caller jetstreamHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	return nil
 }
 
-func (caller jetstreamHubNextCaller) Docs() string {
-	return nextDocs
+func (caller jetstreamHubNextCaller) FuncDocs() *slip.FuncDoc {
+	return &nextFuncDoc
 }
 
 type jetstreamHubAckCaller struct{}
@@ -454,8 +476,8 @@ func (caller jetstreamHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) s
 	return nil
 }
 
-func (caller jetstreamHubAckCaller) Docs() string {
-	return ackDocs
+func (caller jetstreamHubAckCaller) FuncDocs() *slip.FuncDoc {
+	return &ackFuncDoc
 }
 
 type jetstreamHubSetErrorHandlerCaller struct{}
@@ -471,11 +493,16 @@ func (caller jetstreamHubSetErrorHandlerCaller) Call(s *slip.Scope, args slip.Li
 	return nil
 }
 
-func (caller jetstreamHubSetErrorHandlerCaller) Docs() string {
-	return `__:set-error-handler__ _handler__ => _nil_
-   _handler_ is the function to call when an out of band error occurrs.
-
-
-Sets the error handler for message processing errors.
-`
+func (caller jetstreamHubSetErrorHandlerCaller) FuncDocs() *slip.FuncDoc {
+	return &slip.FuncDoc{
+		Name: ":set-error-handler",
+		Text: `Sets the error handler for message processing errors.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "handler",
+				Type: "function",
+				Text: "The function to call when an out of band error occurrs.",
+			},
+		},
+	}
 }

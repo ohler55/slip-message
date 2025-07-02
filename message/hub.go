@@ -13,99 +13,207 @@ import (
 	"github.com/ohler55/slip/pkg/flavors"
 )
 
-const (
-	subscribeDocs = `__:subscribe__ _subject_ _callback_ &key _content-type_ _name_ => _instance_
-   _subject_ to listen on or queue to be a consumer of.
-   _callback_ can be either _nil_ when the _:next_ method will be called on a queue or
-a function to call when a message is received.
-   _:content-type_ is an optional argument of the expected content type which can be one of
-_nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.
-   _:name_ of the subscriber is used with work queues.
+var (
+	subscribeFuncDoc = slip.FuncDoc{
+		Name: ":subscribe",
+		Text: `Returns a _subscriber-flavor_ instance that represents a subscription on the _subject_.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to listen on or queue to be a consumer of.",
+			},
+			{
+				Name: "callback",
+				Type: "function|nil",
+				Text: `Can be either _nil_ when the _:next_ method will be called on a queue or
+a function to call when a message is received.`,
+			},
+			{Name: "&key"},
+			{
+				Name: ":content-type",
+				Type: "symbol",
+				Text: `An optional argument of the expected content type which can be one of
+_nil_, _:auto_, _:raw_, _:json_, or _:lisp_. _nil_ is the same as _:auto_.`,
+			},
+			{
+				Name: ":name",
+				Type: "string",
+				Text: `Name of the subscriber is used with work queues.`,
+			},
+		},
+		Return: "subscriber-flavor",
+	}
 
+	unsubscribeFuncDoc = slip.FuncDoc{
+		Name: ":unsubscribe",
+		Text: `Returns the number of instances unsubscribed.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subscriber",
+				Type: "string|subscriber-flavor",
+				Text: "Either a subject or a specific subscriber instance.",
+			},
+		},
+		Return: "fixnum",
+	}
 
-Returns a _subscriber-flavor_ instance that represents a subscription on the _subject_.
-`
+	subscribersFuncDoc = slip.FuncDoc{
+		Name: ":subscribers",
+		Text: `Returns a list of _subscriber-flavor_ instances that have subscribed to _subject_.
+A _nil_ _subject_ matches any subscriber.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to filter the subscriber list.",
+			},
+		},
+		Return: "list",
+	}
 
-	unsubscribeDocs = `__:unsubscribe__ _subscriber_ => _fixnum_
-   __subscriber_ can be either a subject or a specific subscriber instance.
+	publishFuncDoc = slip.FuncDoc{
+		Name: ":publish",
+		Text: `Publish a message which is delivered to any _subscribers_ matching the _subject_.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to publish the message on.",
+			},
+			{
+				Name: "message",
+				Type: "string|bag|object",
+				Text: `Either a _string_ for :raw content, a _bag_ for JSON or SEN format, or
+an sexpression for _lisp_ content.`,
+			},
+			{Name: "&optional"},
+			{
+				Name: "content-type",
+				Type: "symbol",
+				Text: `Content type of the message which is in effect for encoding instances of the
+_bag-flavor_ and can be _:json_ or _:sen_.`,
+			},
+		},
+	}
 
+	requestFuncDoc = slip.FuncDoc{
+		Name: ":request",
+		Text: `Send a request message on _subject_ and wait for a reply.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subject",
+				Type: "string",
+				Text: "Subject to publish the request message on.",
+			},
+			{
+				Name: "message",
+				Type: "string|bag|object",
+				Text: `Either a _string_ for :raw content, a _bag_ for JSON or SEN format, or
+an sexpression for _lisp_ content.`,
+			},
+			{Name: "&key"},
+			{
+				Name: ":content-type",
+				Type: "symbol",
+				Text: `Content type of the message which is in effect for encoding instances of the
+ _bag-flavor_ and can be _:json_ or _:sen_.`,
+			},
+			{
+				Name: ":timeout",
+				Type: "real",
+				Text: `A number denoting the seconds to wait for a reply before a timeout panic.`,
+			},
+		},
+		Return: "bag",
+	}
 
-Returns the number of instances unsubscribed.
-`
+	closeFuncDoc = slip.FuncDoc{
+		Name: ":close",
+		Text: `Closes the hub.`,
+	}
 
-	subscribersDocs = `__:subscribers__  &optional _subject_ => _list_
-   _subject_ to filter the subscriber list.
+	addQueueFuncDoc = slip.FuncDoc{
+		Name: ":add-queue",
+		Text: `Add a queue with the provided parameters.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "name",
+				Type: "string",
+				Text: "Name of the queue.",
+			},
+			{
+				Name: "retention",
+				Type: "symbol",
+				Text: `Either _:work_ for a work queue or _:all_ for a queue that provides for all consumers.`,
+			},
+			{Name: "&key"},
+			{
+				Name: ":max-messages",
+				Type: "fixnum",
+				Text: `The maximum number of messages to queue before blocking.`,
+			},
+			{
+				Name: ":subjects",
+				Type: "list",
+				Text: `Subjects to listen on. If none are provided then the queue _name_ is used as the only subject.`,
+			},
+		},
+	}
 
+	queuesFuncDoc = slip.FuncDoc{
+		Name:   ":queues",
+		Text:   `Returns a list of queue descriptions consisting the queue name, retention, and the consumers.`,
+		Return: "list",
+	}
 
-Returns a list of _subscriber-flavor_ instances that have subscribed to _subject_.
-A _nil_ _subject_ matches any subscriber.
-`
+	closeQueueFuncDoc = slip.FuncDoc{
+		Name: ":close-queue",
+		Text: `Close a queue.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "name",
+				Type: "string",
+				Text: "Name of the queue to close.",
+			},
+		},
+	}
 
-	publishDocs = `__:publish__ _subject_ _message_ &optional _content-type_ => _nil_
-   _subject_ to publish the message on
-   _message_ either a _string_ for :raw content, a _bag_ for JSON or SEN format, or an sexpression for _lisp_ content.
-   _content-type_ of the message which is in effect for encoding instances of the
- _bag-flavor_ and can be _:json_ or _:sen_.
+	nextFuncDoc = slip.FuncDoc{
+		Name: ":next",
+		Text: `Get the next message on a queue and return the message and message identifier.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subscriber",
+				Type: "subscriber-flavor",
+				Text: "Must be a queue subscriber.",
+			},
+			{Name: "&key"},
+			{
+				Name: ":timeout",
+				Type: "real",
+				Text: `A number denoting the seconds to wait for a reply before a timeout panic.`,
+			},
+		},
+		Return: "bag, fixnum",
+	}
 
-
-Publish a message which is delivered to any _subscribers_ matching the _subject_.
-`
-
-	requestDocs = `__:request__ _subject_ _message_ &key _content-type_ _timeout_
-   _subject_ to request the message on
-   _message_ either a _string_ for :raw content, a _bag_ for JSON or SEN format, or an sexpression for _lisp_ content.
-   _:content-type_ of the message which is in effect for encoding instances of the
- _bag-flavor_ and can be _:json_ or _:sen_.
-   _:timeout_ is a real number denoting the seconds to wait for a reply before a timeout panic.
-
-
-Send a request message on _subject_ and wait for a reply.
-`
-
-	closeDocs = `__:close__ => _nil_
-
-
-Close the hub.
-`
-
-	addQueueDocs = `__:add-queue__ _name_ _retention_ _consumers_ &key _max-messages_ _subjects_ => _nil_
-   _name_ of the queue.
-   _retention_ either _:work_ for a work queue or _:all_ for a queue that provides for all consumers.
-   _consumers_ a list of consumer names. For work queues there can only be one consumer name.
-   _max-messages_ maximum number of messages to queue before blocking
-   _subjects_ to listen on. If none are provided then the queue _name_ is used as the only subject.
-
-
-Add a queue with the provided parameters.
-`
-
-	queuesDocs = `__:queues__ => _list_
-
-
-Returns a list of queue descriptions consisting the queue name, retention, and the consumers.
-`
-
-	closeQueueDocs = `__:close-queue__ _name_ => _nil_
-
-
-Close a queue.
-`
-
-	nextDocs = `__:next__ _subscriber_ &key _timeout_ => _object_, _fixnum_
-   _subscriber_ must be a queue subscriber.
-   _:timeout_ is a real number denoting the seconds to wait for a reply before a timeout panic.
-
-
-Get the next message on a queue and return the message and message identifier.
-`
-
-	ackDocs = `__:ack__ _subscriber_ _message-id_ => _nil_
-   _subscriber_ must be a queue subscriber.
-   _message-id_ is the identifier for the message to ACK.
-
-
-ACK a message for the subscriber.
-`
+	ackFuncDoc = slip.FuncDoc{
+		Name: ":ack",
+		Text: `ACK a message for the subscriber.`,
+		Args: []*slip.DocArg{
+			{
+				Name: "subscriber",
+				Type: "subscriber-flavor",
+				Text: "Must be a queue subscriber.",
+			},
+			{
+				Name: "message-id",
+				Type: "fixnum",
+				Text: `The identifier for the message to ACK.`,
+			},
+		},
+	}
 )
 
 func subscriberFromArgs(self *flavors.Instance, args slip.List) (
