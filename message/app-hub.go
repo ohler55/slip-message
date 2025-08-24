@@ -90,11 +90,11 @@ func (caller appHubInitCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubSubscribeCaller struct{}
 
-func (caller appHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (subscriber slip.Object) {
+func (caller appHubSubscribeCaller) Call(s *slip.Scope, args slip.List, depth int) (subscriber slip.Object) {
 	self := s.Get("self").(*flavors.Instance)
 
 	var sub *subscription
-	subscriber, sub, _ = subscriberFromArgs(self, args)
+	subscriber, sub, _ = subscriberFromArgs(s, self, args, depth)
 	as := appSub{sub: sub, queue: make(gi.Channel, 32), done: make(chan struct{}, 1)}
 	go as.loop(s)
 
@@ -112,7 +112,7 @@ func (caller appHubSubscribeCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubUnsubscribeCaller struct{}
 
-func (caller appHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (subscriber slip.Object) {
+func (caller appHubUnsubscribeCaller) Call(s *slip.Scope, args slip.List, depth int) (subscriber slip.Object) {
 	self := s.Get("self").(*flavors.Instance)
 	ah := self.Any.(*appHub)
 	var removed []*appSub
@@ -154,7 +154,7 @@ func (caller appHubUnsubscribeCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubSubscribersCaller struct{}
 
-func (caller appHubSubscribersCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller appHubSubscribersCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	ah := self.Any.(*appHub)
 	var (
@@ -165,7 +165,7 @@ func (caller appHubSubscribersCaller) Call(s *slip.Scope, args slip.List, _ int)
 		if ss, ok := args[0].(slip.String); ok {
 			subject = strings.Split(string(ss), ".")
 		} else {
-			slip.PanicType("subject", args[0], "string")
+			slip.TypePanic(s, depth, "subject", args[0], "string")
 		}
 	}
 	ah.mu.Lock()
@@ -185,9 +185,9 @@ func (caller appHubSubscribersCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubPublishCaller struct{}
 
-func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	if len(args) < 2 || 3 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
+		slip.ErrorPanic(s, depth, "Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
 	ah := self.Any.(*appHub)
@@ -200,9 +200,9 @@ func (caller appHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) sli
 		subject = string(ss)
 		subj = strings.Split(subject, ".")
 	} else {
-		slip.PanicType("subject", args[0], "string")
+		slip.TypePanic(s, depth, "subject", args[0], "string")
 	}
-	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
+	msg = encodeMsg(s, args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"), depth)
 	ah.mu.Lock()
 	for _, as := range ah.subs {
 		if len(subject) == 0 || subjectMatch(subj, as.sub.subject) {
@@ -225,8 +225,8 @@ func (caller appHubPublishCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubRequestCaller struct{}
 
-func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (reply slip.Object) {
-	self, subject, msg, timeout := getRequestMsg(s, args)
+func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, depth int) (reply slip.Object) {
+	self, subject, msg, timeout := getRequestMsg(s, args, depth)
 	subj := strings.Split(subject, ".")
 
 	ah := self.Any.(*appHub)
@@ -246,7 +246,7 @@ func (caller appHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) (re
 	case reply = <-replies:
 		// got a reply
 	case <-time.After(timeout):
-		slip.NewPanic("request to %s timed out after %s", subject, timeout)
+		slip.ErrorPanic(s, depth, "request to %s timed out after %s", subject, timeout)
 	}
 	return
 }
@@ -278,8 +278,8 @@ func (caller appHubCloseCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubAddQueueCaller struct{}
 
-func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self, name, all, maxMsgs, consumers, subjects := getAddQueueArgs(s, args)
+func (caller appHubAddQueueCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self, name, all, maxMsgs, consumers, subjects := getAddQueueArgs(s, args, depth)
 	ah := self.Any.(*appHub)
 
 	ah.mu.Lock()
@@ -318,7 +318,7 @@ func (caller appHubQueuesCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubCloseQueueCaller struct{}
 
-func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	ah := self.Any.(*appHub)
 	if ss, ok := args[0].(slip.String); ok {
@@ -340,7 +340,7 @@ func (caller appHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) 
 			found.shutdown()
 		}
 	} else {
-		slip.PanicType("name", args[0], "string")
+		slip.TypePanic(s, depth, "name", args[0], "string")
 	}
 	return nil
 }
@@ -351,8 +351,8 @@ func (caller appHubCloseQueueCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubNextCaller struct{}
 
-func (caller appHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self, sub, timeout := getNextArgs(s, args)
+func (caller appHubNextCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self, sub, timeout := getNextArgs(s, args, depth)
 	ah := self.Any.(*appHub)
 	var found queue
 	ah.mu.Lock()
@@ -377,8 +377,8 @@ func (caller appHubNextCaller) FuncDocs() *slip.FuncDoc {
 
 type appHubAckCaller struct{}
 
-func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self, sub, mid := getAckArgs(s, args)
+func (caller appHubAckCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self, sub, mid := getAckArgs(s, args, depth)
 	ah := self.Any.(*appHub)
 
 	var found queue

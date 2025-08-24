@@ -81,7 +81,7 @@ func (jh *jsHub) addMsgPending(m *nats.Msg) int64 {
 
 type jetstreamHubInitCaller struct{}
 
-func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	if 0 < len(args) {
 		args = args[0].(slip.List)
@@ -96,7 +96,7 @@ func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) 
 		key, _ := args[i].(slip.Symbol)
 		value, ok := args[i+1].(slip.String)
 		if !ok {
-			slip.PanicType(string(key), args[i+1], "string")
+			slip.TypePanic(s, depth, string(key), args[i+1], "string")
 		}
 		switch string(key) {
 		case ":url":
@@ -110,7 +110,7 @@ func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) 
 		case ":tls-key":
 			tlsKey = string(value)
 		default:
-			slip.PanicType("initializer key", args[i], ":url", ":credentials", ":tls-ca", ":tls-cert", ":tls-key")
+			slip.TypePanic(s, depth, "initializer key", args[i], ":url", ":credentials", ":tls-ca", ":tls-cert", ":tls-key")
 		}
 	}
 	if 0 < len(tlsCert) || 0 < len(tlsKey) {
@@ -119,10 +119,10 @@ func (caller jetstreamHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	jh := jsHub{pending: map[int64]*nats.Msg{}}
 	var err error
 	jh.nc, err = nats.Connect(nu, options...)
-	checkError("nats.Connect", err)
+	checkError(s, "nats.Connect", err, depth)
 
 	jh.js, err = jh.nc.JetStream()
-	checkError("nats.Conn.JetStream", err)
+	checkError(s, "nats.Conn.JetStream", err, depth)
 
 	self.Any = &jh
 
@@ -166,7 +166,7 @@ func (caller jetstreamHubInitCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubSubscribeCaller struct{}
 
-func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ int) (subscriber slip.Object) {
+func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, depth int) (subscriber slip.Object) {
 	self := s.Get("self").(*flavors.Instance)
 
 	var (
@@ -174,7 +174,7 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 		err     error
 		subject string
 	)
-	subscriber, jsub.sub, subject = subscriberFromArgs(self, args)
+	subscriber, jsub.sub, subject = subscriberFromArgs(s, self, args, depth)
 	jh := self.Any.(*jsHub)
 	jh.mu.Lock()
 	jh.subs = append(jh.subs, &jsub)
@@ -188,13 +188,13 @@ func (caller jetstreamHubSubscribeCaller) Call(s *slip.Scope, args slip.List, _ 
 		jsub.nsub, err = jh.js.PullSubscribe(subject, jsub.sub.name, opts...)
 	} else {
 		jsub.nsub, err = jh.nc.Subscribe(subject, func(m *nats.Msg) {
-			if serr := callMsgCallback(s, m, &jsub); serr != nil && jh.errCb != nil {
-				_ = safeCall(s, jh.errCb, slip.List{serr})
+			if serr := callMsgCallback(s, m, &jsub, depth); serr != nil && jh.errCb != nil {
+				_ = safeCall(s, jh.errCb, slip.List{serr}, depth)
 			}
 		})
 	}
 	jh.mu.Unlock()
-	checkError("jetstream hub :subscribe", err)
+	checkError(s, "jetstream hub :subscribe", err, depth)
 
 	return
 }
@@ -247,7 +247,7 @@ func (caller jetstreamHubUnsubscribeCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubSubscribersCaller struct{}
 
-func (caller jetstreamHubSubscribersCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller jetstreamHubSubscribersCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)
 	var (
@@ -258,7 +258,7 @@ func (caller jetstreamHubSubscribersCaller) Call(s *slip.Scope, args slip.List, 
 		if ss, ok := args[0].(slip.String); ok {
 			subject = strings.Split(string(ss), ".")
 		} else {
-			slip.PanicType("subject", args[0], "string")
+			slip.TypePanic(s, depth, "subject", args[0], "string")
 		}
 	}
 	jh.mu.Lock()
@@ -278,9 +278,9 @@ func (caller jetstreamHubSubscribersCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubPublishCaller struct{}
 
-func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	if len(args) < 2 || 3 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
+		slip.ErrorPanic(s, depth, "Incorrect argument count. Expected 2 or 3 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)
@@ -291,11 +291,11 @@ func (caller jetstreamHubPublishCaller) Call(s *slip.Scope, args slip.List, _ in
 	if ss, ok := args[0].(slip.String); ok {
 		subject = string(ss)
 	} else {
-		slip.PanicType("subject", args[0], "string")
+		slip.TypePanic(s, depth, "subject", args[0], "string")
 	}
-	msg = encodeMsg(args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"))
+	msg = encodeMsg(s, args[1], 2 < len(args) && args[2] == slip.Symbol(":sen"), depth)
 	err := jh.nc.Publish(subject, []byte(msg.(slip.String)))
-	checkError("jetstream hub :publish", err)
+	checkError(s, "jetstream hub :publish", err, depth)
 
 	return nil
 }
@@ -306,12 +306,12 @@ func (caller jetstreamHubPublishCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubRequestCaller struct{}
 
-func (caller jetstreamHubRequestCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self, subject, msg, timeout := getRequestMsg(s, args)
+func (caller jetstreamHubRequestCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self, subject, msg, timeout := getRequestMsg(s, args, depth)
 	jh := self.Any.(*jsHub)
 
 	m, err := jh.nc.Request(subject, []byte(msg.(slip.String)), timeout)
-	checkError("jetstream hub :request", err)
+	checkError(s, "jetstream hub :request", err, depth)
 
 	return decodeMessage(slip.String(m.Data), nil)
 }
@@ -335,8 +335,8 @@ func (caller jetstreamHubCloseCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubAddQueueCaller struct{}
 
-func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self, name, all, maxMsgs, consumers, subjects := getAddQueueArgs(s, args)
+func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self, name, all, maxMsgs, consumers, subjects := getAddQueueArgs(s, args, depth)
 	jh := self.Any.(*jsHub)
 
 	cfg := nats.StreamConfig{
@@ -351,13 +351,13 @@ func (caller jetstreamHubAddQueueCaller) Call(s *slip.Scope, args slip.List, _ i
 		cfg.MaxMsgs = int64(maxMsgs)
 	}
 	_, err := jh.js.AddStream(&cfg)
-	checkError("jetstream hub :add-queue", err)
+	checkError(s, "jetstream hub :add-queue", err, depth)
 
 	for _, cn := range consumers {
 		_, err := jh.js.AddConsumer(name,
 			&nats.ConsumerConfig{Durable: cn, Name: cn, AckPolicy: nats.AckExplicitPolicy},
 		)
-		checkError("jetstream hub :add-queue consumer", err)
+		checkError(s, "jetstream hub :add-queue consumer", err, depth)
 	}
 	return nil
 }
@@ -414,13 +414,13 @@ func (caller jetstreamHubQueuesCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubCloseQueueCaller struct{}
 
-func (caller jetstreamHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller jetstreamHubCloseQueueCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)
 	if ss, ok := args[0].(slip.String); ok {
 		_ = jh.js.DeleteStream(string(ss))
 	} else {
-		slip.PanicType("name", args[0], "string")
+		slip.TypePanic(s, depth, "name", args[0], "string")
 	}
 	return nil
 }
@@ -431,8 +431,8 @@ func (caller jetstreamHubCloseQueueCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubNextCaller struct{}
 
-func (caller jetstreamHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self, sub, timeout := getNextArgs(s, args)
+func (caller jetstreamHubNextCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self, sub, timeout := getNextArgs(s, args, depth)
 	jh := self.Any.(*jsHub)
 
 	var jsub *jsSub
@@ -445,7 +445,7 @@ func (caller jetstreamHubNextCaller) Call(s *slip.Scope, args slip.List, _ int) 
 	}
 	jh.mu.Unlock()
 	ma, err := jsub.nsub.Fetch(1, nats.MaxWait(timeout))
-	checkError("jetstream hub :next", err)
+	checkError(s, "jetstream hub :next", err, depth)
 
 	if 0 < len(ma) {
 		mid := jh.addMsgPending(ma[0])
@@ -460,8 +460,8 @@ func (caller jetstreamHubNextCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubAckCaller struct{}
 
-func (caller jetstreamHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
-	self, _, mid := getAckArgs(s, args)
+func (caller jetstreamHubAckCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
+	self, _, mid := getAckArgs(s, args, depth)
 	jh := self.Any.(*jsHub)
 	jh.mu.Lock()
 	m, has := jh.pending[mid]
@@ -471,7 +471,7 @@ func (caller jetstreamHubAckCaller) Call(s *slip.Scope, args slip.List, _ int) s
 	jh.mu.Unlock()
 	if m != nil {
 		err := m.Ack()
-		checkError("jetstream hub :ack", err)
+		checkError(s, "jetstream hub :ack", err, depth)
 	}
 	return nil
 }
@@ -482,9 +482,9 @@ func (caller jetstreamHubAckCaller) FuncDocs() *slip.FuncDoc {
 
 type jetstreamHubSetErrorHandlerCaller struct{}
 
-func (caller jetstreamHubSetErrorHandlerCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller jetstreamHubSetErrorHandlerCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	if len(args) != 1 {
-		slip.NewPanic("Incorrect argument count. Expected 1 but got %d.", len(args))
+		slip.ErrorPanic(s, depth, "Incorrect argument count. Expected 1 but got %d.", len(args))
 	}
 	self := s.Get("self").(*flavors.Instance)
 	jh := self.Any.(*jsHub)

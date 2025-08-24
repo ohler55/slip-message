@@ -18,12 +18,12 @@ type subscription struct {
 	self        *flavors.Instance
 }
 
-func (sub *subscription) setContentType(ct slip.Object) {
+func (sub *subscription) setContentType(s *slip.Scope, ct slip.Object, depth int) {
 	switch ct {
 	case nil, slip.Symbol(":json"), slip.Symbol(":lisp"), slip.Symbol(":auto"), slip.Symbol(":raw"):
 		sub.contentType = ct
 	default:
-		slip.PanicType(":content-type", ct, "nil", ":json", ":lisp", ":auto", ":raw")
+		slip.TypePanic(s, depth, ":content-type", ct, "nil", ":json", ":lisp", ":auto", ":raw")
 	}
 }
 

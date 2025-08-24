@@ -28,7 +28,7 @@ for message distributed by a message hub.`),
 		&Pkg,
 	)
 	subscriberFlavor.Final = true
-	subscriberFlavor.GoMakeOnly = true
+	// subscriberFlavor.GoMakeOnly = true
 	subscriberFlavor.DefMethod(":hub", "", subscriberHubCaller{})
 	subscriberFlavor.DefMethod(":subject", "", subscriberSubjectCaller{})
 	subscriberFlavor.DefMethod(":callback", "", subscriberCallbackCaller{})
@@ -147,9 +147,9 @@ func (caller subscriberSetCallbackCaller) FuncDocs() *slip.FuncDoc {
 
 type subscriberSetContentTypeCaller struct{}
 
-func (caller subscriberSetContentTypeCaller) Call(s *slip.Scope, args slip.List, _ int) slip.Object {
+func (caller subscriberSetContentTypeCaller) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	self := s.Get("self").(*flavors.Instance)
-	self.Any.(*subscription).setContentType(args[0])
+	self.Any.(*subscription).setContentType(s, args[0], depth)
 	return nil
 }
 
@@ -210,12 +210,12 @@ func (caller subscriberNextCaller) FuncDocs() *slip.FuncDoc {
 	}
 }
 
-func makeSubscriber(hub *flavors.Instance, subject, cb, ct, name slip.Object) (
+func makeSubscriber(s *slip.Scope, hub *flavors.Instance, subject, cb, ct, name slip.Object, depth int) (
 	self *flavors.Instance, sub *subscription, subjStr string) {
 
 	self = subscriberFlavor.MakeInstance().(*flavors.Instance)
 	sub = &subscription{self: self, hub: hub}
-	sub.setContentType(ct)
+	sub.setContentType(s, ct, depth)
 	if cb != nil {
 		sub.callback = cl.ResolveToCaller(&self.Scope, cb, 0)
 	}
@@ -223,13 +223,13 @@ func makeSubscriber(hub *flavors.Instance, subject, cb, ct, name slip.Object) (
 		subjStr = string(ss)
 		sub.subject = strings.Split(string(ss), ".")
 	} else {
-		slip.PanicType(":subject", subject, "string")
+		slip.TypePanic(s, depth, ":subject", subject, "string")
 	}
 	if name != nil {
 		if ss, ok := name.(slip.String); ok {
 			sub.name = string(ss)
 		} else {
-			slip.PanicType(":name", name, "string")
+			slip.TypePanic(s, depth, ":name", name, "string")
 		}
 	}
 	self.Any = sub

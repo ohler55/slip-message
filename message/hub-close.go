@@ -42,7 +42,7 @@ func (f *HubClose) Call(s *slip.Scope, args slip.List, depth int) slip.Object {
 	slip.ArgCountCheck(f, args, 1, 1)
 	inst, ok := args[0].(*flavors.Instance)
 	if !ok {
-		slip.PanicType("hub", args[0], "instance")
+		slip.TypePanic(s, depth, "hub", args[0], "instance")
 	}
 	_ = inst.Receive(s, ":close", nil, depth)
 

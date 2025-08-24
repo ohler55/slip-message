@@ -216,7 +216,7 @@ an sexpression for _lisp_ content.`,
 	}
 )
 
-func subscriberFromArgs(self *flavors.Instance, args slip.List) (
+func subscriberFromArgs(s *slip.Scope, self *flavors.Instance, args slip.List, depth int) (
 	subscriber slip.Object, sub *subscription, subject string) {
 	var (
 		ct   slip.Object
@@ -229,13 +229,13 @@ func subscriberFromArgs(self *flavors.Instance, args slip.List) (
 		case slip.Symbol(":name"):
 			name = args[i+1]
 		default:
-			slip.PanicType("&key", args[i], ":name", ":content-type")
+			slip.TypePanic(s, depth, "&key", args[i], ":name", ":content-type")
 		}
 	}
-	return makeSubscriber(self, args[0], args[1], ct, name)
+	return makeSubscriber(s, self, args[0], args[1], ct, name, depth)
 }
 
-func encodeMsg(m slip.Object, useSen bool) (msg slip.Object) {
+func encodeMsg(s *slip.Scope, m slip.Object, useSen bool, depth int) (msg slip.Object) {
 	switch tm := m.(type) {
 	case slip.String:
 		msg = tm
@@ -247,7 +247,7 @@ func encodeMsg(m slip.Object, useSen bool) (msg slip.Object) {
 				msg = slip.String(oj.JSON(tm.Any))
 			}
 		} else {
-			slip.PanicType("message", m, "string", "bag-flavor instance", "lisp data object")
+			slip.TypePanic(s, depth, "message", m, "string", "bag-flavor instance", "lisp data object")
 		}
 	default:
 		msg = slip.String(encoder.Append(nil, tm, 0))
@@ -255,10 +255,10 @@ func encodeMsg(m slip.Object, useSen bool) (msg slip.Object) {
 	return
 }
 
-func getRequestMsg(s *slip.Scope, args slip.List) (
+func getRequestMsg(s *slip.Scope, args slip.List, depth int) (
 	self *flavors.Instance, subject string, msg slip.Object, timeout time.Duration) {
 	if len(args) < 2 {
-		slip.NewPanic("Incorrect argument count. Expected at least 2 but got %d.", len(args))
+		slip.ErrorPanic(s, depth, "Incorrect argument count. Expected at least 2 but got %d.", len(args))
 	}
 	self = s.Get("self").(*flavors.Instance)
 	var (
@@ -268,7 +268,7 @@ func getRequestMsg(s *slip.Scope, args slip.List) (
 	if ss, ok := args[0].(slip.String); ok {
 		subject = string(ss)
 	} else {
-		slip.PanicType("subject", args[0], "string")
+		slip.TypePanic(s, depth, "subject", args[0], "string")
 	}
 	for i := 2; i < len(args); i += 2 {
 		switch args[i] {
@@ -278,28 +278,28 @@ func getRequestMsg(s *slip.Scope, args slip.List) (
 			if rn, ok := args[i+1].(slip.Real); ok {
 				timeout = time.Duration(rn.RealValue() * float64(time.Second))
 			} else {
-				slip.PanicType("timeout", args[i+1], "real")
+				slip.TypePanic(s, depth, "timeout", args[i+1], "real")
 			}
 		default:
-			slip.PanicType("&key", args[i], ":timeout", ":content-type")
+			slip.TypePanic(s, depth, "&key", args[i], ":timeout", ":content-type")
 		}
 	}
-	msg = encodeMsg(args[1], useSen)
+	msg = encodeMsg(s, args[1], useSen, depth)
 
 	return
 }
 
-func getAddQueueArgs(s *slip.Scope, args slip.List) (
+func getAddQueueArgs(s *slip.Scope, args slip.List, depth int) (
 	self *flavors.Instance, name string, all bool, maxMsgs int, consumers, subjects []string) {
 
 	if len(args) < 3 || 7 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 3 but got %d.", len(args))
+		slip.ErrorPanic(s, depth, "Incorrect argument count. Expected 3 but got %d.", len(args))
 	}
 	self = s.Get("self").(*flavors.Instance)
 	if ss, ok := args[0].(slip.String); ok {
 		name = string(ss)
 	} else {
-		slip.PanicType("name", args[0], "string")
+		slip.TypePanic(s, depth, "name", args[0], "string")
 	}
 	switch args[1] {
 	case slip.Symbol(":work"):
@@ -307,7 +307,7 @@ func getAddQueueArgs(s *slip.Scope, args slip.List) (
 	case slip.Symbol(":all"):
 		all = true
 	default:
-		slip.PanicType("retention", args[1], ":work", ":all")
+		slip.TypePanic(s, depth, "retention", args[1], ":work", ":all")
 	}
 	if list, ok := args[2].(slip.List); ok {
 		consumers = make([]string, len(list))
@@ -315,11 +315,11 @@ func getAddQueueArgs(s *slip.Scope, args slip.List) (
 			if ss, ok2 := v.(slip.String); ok2 {
 				consumers[i] = string(ss)
 			} else {
-				slip.PanicType("consumers element", v, "string")
+				slip.TypePanic(s, depth, "consumers element", v, "string")
 			}
 		}
 	} else {
-		slip.PanicType("consumers", args[2], "list of strings")
+		slip.TypePanic(s, depth, "consumers", args[2], "list of strings")
 	}
 	for i := 3; i < len(args); i += 2 {
 		switch args[i] {
@@ -327,7 +327,7 @@ func getAddQueueArgs(s *slip.Scope, args slip.List) (
 			if num, ok := args[i+1].(slip.Fixnum); ok && 0 < num {
 				maxMsgs = int(num)
 			} else {
-				slip.PanicType(":max-messages", args[i+1], "fixnum")
+				slip.TypePanic(s, depth, ":max-messages", args[i+1], "fixnum")
 			}
 		case slip.Symbol(":subjects"):
 			if sa, ok := args[i+1].(slip.List); ok {
@@ -335,14 +335,14 @@ func getAddQueueArgs(s *slip.Scope, args slip.List) (
 					if ss, ok2 := v.(slip.String); ok2 {
 						subjects = append(subjects, string(ss))
 					} else {
-						slip.PanicType(":subjects elements", v, "string")
+						slip.TypePanic(s, depth, ":subjects elements", v, "string")
 					}
 				}
 			} else {
-				slip.PanicType(":subjects", args[i+1], "list")
+				slip.TypePanic(s, depth, ":subjects", args[i+1], "list")
 			}
 		default:
-			slip.PanicType("&key", args[i], ":timeout", ":content-type")
+			slip.TypePanic(s, depth, "&key", args[i], ":timeout", ":content-type")
 		}
 	}
 	if len(subjects) == 0 {
@@ -351,14 +351,18 @@ func getAddQueueArgs(s *slip.Scope, args slip.List) (
 	return
 }
 
-func getNextArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *subscription, timeout time.Duration) {
+func getNextArgs(
+	s *slip.Scope,
+	args slip.List,
+	depth int) (self *flavors.Instance, sub *subscription, timeout time.Duration) {
+
 	if len(args) < 1 || 3 < len(args) {
-		slip.NewPanic("Incorrect argument count. Expected 1 or 3 but got %d.", len(args))
+		slip.ErrorPanic(s, depth, "Incorrect argument count. Expected 1 or 3 but got %d.", len(args))
 	}
 	self = s.Get("self").(*flavors.Instance)
 	inst, ok := args[0].(*flavors.Instance)
 	if !ok || inst.Type != subscriberFlavor {
-		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
+		slip.TypePanic(s, depth, "subscriber", args[0], "subscriber-flavor instance")
 	}
 	sub = inst.Any.(*subscription)
 	for i := 1; i < len(args); i += 2 {
@@ -366,34 +370,34 @@ func getNextArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *su
 			if rn, ok := args[i+1].(slip.Real); ok {
 				timeout = time.Duration(rn.RealValue() * float64(time.Second))
 			} else {
-				slip.PanicType("timeout", args[i+1], "real")
+				slip.TypePanic(s, depth, "timeout", args[i+1], "real")
 			}
 		} else {
-			slip.PanicType("&key", args[i], ":timeout")
+			slip.TypePanic(s, depth, "&key", args[i], ":timeout")
 		}
 	}
 	return
 }
 
-func getAckArgs(s *slip.Scope, args slip.List) (self *flavors.Instance, sub *subscription, msgID int64) {
+func getAckArgs(s *slip.Scope, args slip.List, depth int) (self *flavors.Instance, sub *subscription, msgID int64) {
 	if len(args) < 2 {
-		slip.NewPanic("Incorrect argument count. Expected 2 but got %d.", len(args))
+		slip.ErrorPanic(s, depth, "Incorrect argument count. Expected 2 but got %d.", len(args))
 	}
 	self = s.Get("self").(*flavors.Instance)
 	inst, ok := args[0].(*flavors.Instance)
 	if !ok || inst.Type != subscriberFlavor {
-		slip.PanicType("subscriber", args[0], "subscriber-flavor instance")
+		slip.TypePanic(s, depth, "subscriber", args[0], "subscriber-flavor instance")
 	}
 	sub = inst.Any.(*subscription)
 	if num, ok2 := args[1].(slip.Fixnum); ok2 {
 		msgID = int64(num)
 	} else {
-		slip.PanicType("message-id", args[1], "fixnum")
+		slip.TypePanic(s, depth, "message-id", args[1], "fixnum")
 	}
 	return
 }
 
-func callMsgCallback(s *slip.Scope, m *nats.Msg, jsub *jsSub) (result slip.Object) {
+func callMsgCallback(s *slip.Scope, m *nats.Msg, jsub *jsSub, depth int) (result slip.Object) {
 	defer func() {
 		switch rec := recover().(type) {
 		case nil:
@@ -401,33 +405,33 @@ func callMsgCallback(s *slip.Scope, m *nats.Msg, jsub *jsSub) (result slip.Objec
 		case slip.Object:
 			result = rec
 		default:
-			result = slip.NewError("%s", rec)
+			result = slip.ErrorNew(s, depth, "%s", rec)
 		}
 	}()
 	msg := decodeMessage(slip.String(m.Data), jsub.sub.contentType)
 	reply := jsub.sub.callback.Call(s, slip.List{msg}, 0)
 	if 0 < len(m.Reply) {
-		if err := m.Respond([]byte(encodeMsg(reply, false).(slip.String))); err != nil {
+		if err := m.Respond([]byte(encodeMsg(s, reply, false, depth).(slip.String))); err != nil {
 			panic(err)
 		}
 	}
 	return
 }
 
-func safeCall(s *slip.Scope, caller slip.Caller, args slip.List) (result slip.Object) {
+func safeCall(s *slip.Scope, caller slip.Caller, args slip.List, depth int) (result slip.Object) {
 	defer func() {
 		switch rec := recover().(type) {
 		case nil, slip.Object:
 			// leave as is
 		default:
-			result = slip.NewError("%s", rec)
+			result = slip.ErrorNew(s, depth, "%s", rec)
 		}
 	}()
 	return caller.Call(s, args, 0)
 }
 
-func checkError(where string, err error) {
+func checkError(s *slip.Scope, where string, err error, depth int) {
 	if err != nil {
-		slip.NewPanic("%s: %s", where, err)
+		slip.ErrorPanic(s, depth, "%s: %s", where, err)
 	}
 }
