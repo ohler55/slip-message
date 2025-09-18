@@ -28,7 +28,7 @@ for message distributed by a message hub.`),
 		&Pkg,
 	)
 	subscriberFlavor.Final = true
-	// subscriberFlavor.GoMakeOnly = true
+	subscriberFlavor.GoMakeOnly = true
 	subscriberFlavor.DefMethod(":hub", "", subscriberHubCaller{})
 	subscriberFlavor.DefMethod(":subject", "", subscriberSubjectCaller{})
 	subscriberFlavor.DefMethod(":callback", "", subscriberCallbackCaller{})

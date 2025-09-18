@@ -144,3 +144,10 @@ func TestSubscriberBadContentType(t *testing.T) {
 		PanicType: slip.Symbol("type-error"),
 	}).Test(t)
 }
+
+func TestSubscriberGoMakeOnly(t *testing.T) {
+	(&sliptest.Function{
+		Source:    `(make-instance 'subscriber-flavor)`,
+		PanicType: slip.ErrorSymbol,
+	}).Test(t)
+}
