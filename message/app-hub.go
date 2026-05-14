@@ -84,7 +84,7 @@ func (caller appHubInitCaller) Call(s *slip.Scope, args slip.List, _ int) slip.O
 func (caller appHubInitCaller) FuncDocs() *slip.FuncDoc {
 	return &slip.FuncDoc{
 		Name: ":init",
-		Text: "Sets the initial value when _make-instance_ is called.",
+		Text: "Sets the initial values when _make-instance_ is called.",
 	}
 }
 

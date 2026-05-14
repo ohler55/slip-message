@@ -10,8 +10,27 @@ import (
 var Pkg = slip.Package{
 	Name:      "message",
 	Nicknames: []string{"message", "msg"},
-	Doc:       "Home of symbols defined for the message (msg) functions, variables, and constants.",
-	PreSet:    slip.DefaultPreSet,
+	Doc: `Home of symbols defined for the message (msg) functions, variables, and constants.
+
+
+This package provided two kinds of message hubs. Both support publishing and
+subscribing to subjects. The 'app' hub is an in-memory message hub while the
+jetstream hub is a NATS messaging hub. Hubs are implemented with Slip Flavors
+allowing additional hubs to be implemented such that they can be substituted
+for either of the two hub types included in the package.
+
+
+Messages can be either strings, JSON, or Lisp.
+
+
+Example:
+  (defvar greeting nil)
+  (defvar my-hub (make-instance 'app-hub-flavor))
+  (message-subscribe my-hub "hello.world" (lambda (m) (setq greeting m)))
+  (message-publish my-hub "hello.world" "goodbye")
+
+`,
+	PreSet: slip.DefaultPreSet,
 }
 
 func init() {

@@ -25,7 +25,6 @@ formatters:
 linters:
   enable:
     - errcheck
-    - goconst
     - misspell
     - lll
     - unused
@@ -38,6 +37,7 @@ linters:
     - depguard
     - gochecknoglobals
     - gochecknoinits
+    - goconst
     - gocyclo
     - gosec
     - nakedret
