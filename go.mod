@@ -6,7 +6,7 @@ require (
 	github.com/nats-io/nats-server/v2 v2.14.0
 	github.com/nats-io/nats.go v1.51.0
 	github.com/ohler55/ojg v1.28.1
-	github.com/ohler55/slip v1.4.1
+	github.com/ohler55/slip v1.5.0
 )
 
 require (
@@ -23,3 +23,5 @@ require (
 	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 )
+
+// replace github.com/ohler55/slip => ../slip
