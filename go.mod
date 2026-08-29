@@ -1,12 +1,12 @@
 module github.com/ohler55/slip-message
 
-go 1.26
+go 1.27
 
 require (
 	github.com/nats-io/nats-server/v2 v2.14.4
 	github.com/nats-io/nats.go v1.52.0
-	github.com/ohler55/ojg v1.28.4
-	github.com/ohler55/slip v1.5.0
+	github.com/ohler55/ojg v1.28.5
+	github.com/ohler55/slip v1.5.1
 )
 
 require (
@@ -24,4 +24,4 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 )
 
-// replace github.com/ohler55/slip => ../slip
+replace github.com/ohler55/slip => ../slip
